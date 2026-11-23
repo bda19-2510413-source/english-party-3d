@@ -55,8 +55,15 @@
         </button>
     </div>
 
-    <!-- ========================================== -->
-    <!-- 미니게임 1: 폭탄 해체하기 (BOMB DEFUSAL) 오버레이 -->
+    <!-- 파티 룸 우측 상단: 실시간 종합 점수(PT) 순위판 -->
+    <div id="party-scoreboard-hud" class="hidden fixed top-4 right-4 z-40 glass-panel rounded-2xl p-3.5 min-w-[210px] shadow-xl">
+        <div class="text-xs font-black text-indigo-600 mb-2 flex items-center justify-between">
+            <span>🏆 종합 순위 (POINT)</span>
+            <span class="text-[10px] text-slate-400">1등 +10점</span>
+        </div>
+        <div id="party-scoreboard-list" class="space-y-1.5 text-xs font-bold text-slate-800"></div>
+    </div>
+
     <!-- ========================================== -->
     <div id="bomb-game-overlay" class="hidden fixed inset-0 z-50 pointer-events-none flex flex-col justify-between">
         <!-- 분할 화면 경계선 & 플레이어 이름/점수 배지 컨테이너 -->
@@ -87,6 +94,7 @@
                 <input id="bomb-word-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                     placeholder="영단어를 똑같이 입력하세요!"
                     oninput="onBombWordInput(this.value)"
+                    onkeyup="onBombWordKeyUp(event)"
                     class="w-full text-center text-2xl font-black tracking-widest uppercase px-4 py-2.5 rounded-2xl bg-white border-3 border-indigo-400 focus:border-rose-500 focus:outline-none text-slate-800 shadow-inner" />
             </div>
         </div>
@@ -205,10 +213,10 @@
     </div>
 
     <!-- 모듈 스크립트 로드 -->
-    <script src="character.js?v=5"></script>
-    <script src="world.js?v=5"></script>
-    <script type="module" src="firebase-sync.js?v=5"></script>
-    <script src="minigame-bomb.js?v=5"></script>
-    <script src="main.js?v=5"></script>
+    <script src="character.js?v=6"></script>
+    <script src="world.js?v=6"></script>
+    <script type="module" src="firebase-sync.js?v=6"></script>
+    <script src="minigame-bomb.js?v=6"></script>
+    <script src="main.js?v=6"></script>
 </body>
 </html>
