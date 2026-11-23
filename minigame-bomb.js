@@ -304,18 +304,28 @@ function evaluateBombDefusalResults() {
     const sorted = [...bombStages].sort((a, b) => b.score - a.score);
     const topScore = sorted[0] ? sorted[0].score : 0;
 
-    // 등수별 포인트 테이블 (1등: 10점, 2등: 7점, 3등: 5점, 4등 이하: 3점)
+    // 등수별 포인트 테이블 (1등: 10점, 2등: 7점, 3등: 5점, 4등: 3점, 5등 이하: 2점)
     const rankPointTable = [10, 7, 5, 3, 2];
     const awardedPointsMap = {};
+    const rankDisplayMap = {};
+    const winners = [];
 
-    sorted.forEach((st, rankIdx) => {
-        const earnedPt = rankPointTable[rankIdx] || 2;
+    let currentRank = 1;
+    sorted.forEach((st, idx) => {
+        // 앞사람과 점수가 같으면 같은 공동 순위 유지!
+        if (idx > 0 && st.score < sorted[idx - 1].score) {
+            currentRank = idx + 1;
+        }
+        rankDisplayMap[st.member.id] = currentRank;
+        const earnedPt = rankPointTable[currentRank - 1] || 2;
         awardedPointsMap[st.member.id] = earnedPt;
 
-        if (rankIdx === 0 && (sorted.length === 1 || st.score >= topScore)) {
+        // 공동 1등까지 모두 탈출 성공!
+        if (currentRank === 1) {
             st.isWinner = true;
             st.ropeGroup.visible = false;
             st.bombGroup.visible = false;
+            winners.push(st.member.name);
         } else {
             st.isWinner = false;
             st.exploded = true;
@@ -332,15 +342,19 @@ function evaluateBombDefusalResults() {
 
     const rankListEl = document.getElementById('bomb-ranking-list');
     rankListEl.innerHTML = '';
-    sorted.forEach((st, idx) => {
+    sorted.forEach((st) => {
         const isFirst = st.isWinner;
+        const rankNum = rankDisplayMap[st.member.id] || 1;
+        const isTied = sorted.filter(x => x.score === st.score).length > 1;
+        const rankLabel = isTied ? `공동 ${rankNum}등` : `${rankNum}등`;
         const earnedPt = awardedPointsMap[st.member.id] || 0;
         const totalPt = (window.getMemberTotalPoints ? window.getMemberTotalPoints(st.member.id) : earnedPt);
+
         const row = document.createElement('div');
         row.className = `flex items-center justify-between px-4 py-2.5 rounded-2xl border-2 ${isFirst ? 'bg-amber-50 border-amber-400' : 'bg-slate-100 border-slate-200'}`;
         row.innerHTML = `
             <div class="flex items-center gap-2">
-                <span class="font-black text-base ${isFirst ? 'text-amber-600' : 'text-slate-500'}">${idx + 1}등</span>
+                <span class="font-black text-base ${isFirst ? 'text-amber-600' : 'text-slate-500'}">${rankLabel}</span>
                 <span class="font-black text-slate-800">${st.member.name}</span>
                 <span class="text-[11px] font-bold px-2 py-0.5 rounded-full ${isFirst ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}">
                     ${isFirst ? '🎉 탈출!' : '💥 폭발!'}
@@ -354,8 +368,8 @@ function evaluateBombDefusalResults() {
         rankListEl.appendChild(row);
     });
 
-    const winnerName = sorted[0] ? sorted[0].member.name : '1등';
-    document.getElementById('bomb-winner-desc').textContent = `👑 ${winnerName}님이 가장 많은 폭탄을 해체해 탈출했습니다!`;
+    const winnerNamesText = winners.length > 1 ? `공동 1등 ${winners.join(', ')}` : (winners[0] || '1등');
+    document.getElementById('bomb-winner-desc').textContent = `👑 ${winnerNamesText}님이 폭탄을 해체해 탈출했습니다!`;
     document.getElementById('bomb-result-panel').classList.remove('hidden');
 
     const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
