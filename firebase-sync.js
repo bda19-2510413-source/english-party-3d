@@ -1,6 +1,6 @@
 // ==========================================
 // Firebase Realtime Database 실시간 멀티플레이 연동
-// (로비 위치/밀치기 + 파티 룸 소파/룰렛 동기화)
+// (로비 위치/밀치기 + 파티 룸 소파/룰렛 + 폭탄 해체 동기화)
 // ==========================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, set, get, update, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
@@ -68,7 +68,7 @@ window.syncJoinLobby = function(playerData) {
 window.syncUpdateLobbyState = function(playerData, force = false) {
     if (!db) return;
     const now = Date.now();
-    if (!force && now - lastLobbySyncTime < 75) return; // 초당 약 13회 전송
+    if (!force && now - lastLobbySyncTime < 75) return;
     lastLobbySyncTime = now;
 
     update(ref(db, `rooms/global_lobby/players/${myPlayerId}`), {
@@ -84,7 +84,7 @@ window.syncUpdateLobbyState = function(playerData, force = false) {
     });
 };
 
-// 다른 플레이어를 밀쳤을 때 충격파 이벤트 전송
+// 좌클릭 시 상대 화면에도 밀치기 3D 모션과 충격파가 보이도록 전송
 window.syncLobbyShove = function(targetId, vx, vz) {
     if (!db) return;
     update(ref(db, `rooms/global_lobby/players/${myPlayerId}`), {
@@ -133,7 +133,6 @@ window.syncJoinRoom = async function(code, charInfo) {
         return { ok: false, error: '존재하지 않는 방 번호입니다!' };
     }
     const data = snap.val();
-    // 입장 시점에 이미 완료된 이전 룰렛 트리거 ID는 무시하도록 초기화
     lastHandledTriggerId = data.rouletteTriggerId || 0;
 
     const memberRef = ref(db, `rooms/${code}/members/${myPlayerId}`);
@@ -160,6 +159,39 @@ window.syncSpinRoulette = async function(code, triggerId, targetIndex) {
     });
 };
 
+// ==========================================
+// 3. 폭탄 해체 미니게임 실시간 동기화
+// ==========================================
+let lastHandledMinigameStartId = 0;
+
+window.syncStartBombMinigame = async function(code) {
+    if (!db || !code) return;
+    const startId = Date.now();
+    lastHandledMinigameStartId = startId;
+    await update(ref(db, `rooms/${code}`), {
+        minigameState: {
+            type: 'BOMB_DEFUSAL',
+            startId: startId,
+            startedAt: startId,
+            scores: {}
+        }
+    });
+};
+
+window.syncUpdateBombScore = function(code, score) {
+    if (!db || !code) return;
+    update(ref(db, `rooms/${code}/minigameState/scores`), {
+        [myPlayerId]: score
+    });
+};
+
+window.syncReturnToPartyRoom = async function(code) {
+    if (!db || !code) return;
+    await update(ref(db, `rooms/${code}`), {
+        minigameState: null
+    });
+};
+
 function subscribeRoom(code) {
     if (!db) return;
     const roomRef = ref(db, `rooms/${code}`);
@@ -172,7 +204,6 @@ function subscribeRoom(code) {
 
         if (data.members) {
             const memberList = Object.values(data.members);
-            // 입장 순서(joinedAt)대로 정렬하여 기존 플레이어 좌석 번호가 절대 바뀌지 않게 고정
             memberList.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
             window.currentRoomInfo.members = memberList;
             if (typeof window.onRoomMembersUpdated === 'function') {
@@ -180,7 +211,6 @@ function subscribeRoom(code) {
             }
         }
 
-        // 방장이 실제로 룰렛 버튼을 눌렀을 때(triggerId > 0 및 새 ID)만 팀원 화면 회전
         const triggerId = Number(data.rouletteTriggerId || 0);
         if (triggerId > 0 && triggerId !== lastHandledTriggerId) {
             lastHandledTriggerId = triggerId;
@@ -188,10 +218,26 @@ function subscribeRoom(code) {
                 window.startRemoteRouletteSpin(data.rouletteTargetIndex || 0);
             }
         }
+
+        if (data.minigameState && data.minigameState.type === 'BOMB_DEFUSAL') {
+            const mg = data.minigameState;
+            if (mg.startId && mg.startId !== lastHandledMinigameStartId) {
+                lastHandledMinigameStartId = mg.startId;
+                if (typeof window.enterBombDefusalMinigame === 'function') {
+                    window.enterBombDefusalMinigame(mg.startedAt);
+                }
+            }
+            if (mg.scores && typeof window.onBombScoresUpdated === 'function') {
+                window.onBombScoresUpdated(mg.scores);
+            }
+        } else if (!data.minigameState && window.isBombMinigameActive) {
+            if (typeof window.exitBombMinigameToRoom === 'function') {
+                window.exitBombMinigameToRoom();
+            }
+        }
     });
 }
 
-// main.js가 먼저 실행되어 대기 중인 로비 입장이 있다면 즉시 실행
 if (window.pendingLobbyJoin) {
     window.syncJoinLobby(window.pendingLobbyJoin);
     window.pendingLobbyJoin = null;
