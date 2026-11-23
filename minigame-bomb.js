@@ -364,13 +364,20 @@ function evaluateBombDefusalResults() {
 }
 
 function finishBombMinigameToRoom() {
+    window.hasPlayedFirstRound = true;
+    let nextRound = 2;
+    if (window.currentRoomInfo) {
+        window.currentRoomInfo.currentRound = (window.currentRoomInfo.currentRound || 1) + 1;
+        nextRound = window.currentRoomInfo.currentRound;
+    }
     if (window.syncReturnToPartyRoom && window.currentRoomInfo) {
-        window.syncReturnToPartyRoom(window.currentRoomInfo.code);
+        window.syncReturnToPartyRoom(window.currentRoomInfo.code, nextRound);
     }
     window.exitBombMinigameToRoom();
 }
 
 window.exitBombMinigameToRoom = function() {
+    window.hasPlayedFirstRound = true;
     window.isBombMinigameActive = false;
     document.getElementById('bomb-game-overlay').classList.add('hidden');
     if (bombGameGroup) bombGameGroup.visible = false;
