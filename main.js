@@ -377,12 +377,14 @@ async function submitJoinRoom() {
 // 로비(포탈 들판) 다른 플레이어 실시간 동기화 & 밀치기 모션/판정
 // ==========================================
 window.onLobbyPlayersUpdated = function(allPlayers, myId) {
+    if (!lobbyGroup) return;
     const now = Date.now();
     const activeIds = new Set();
 
     Object.entries(allPlayers).forEach(([pid, pData]) => {
         if (pid === myId) return;
-        if (!pData.inLobby || (pData.updatedAt && now - pData.updatedAt > 15000)) return;
+        if (!pData || pData.inLobby === false) return;
+        if (pData.updatedAt && now - pData.updatedAt > 60000) return;
         activeIds.add(pid);
 
         let remote = remoteLobbyPlayers[pid];
@@ -938,5 +940,8 @@ window.onload = function () {
     initScene();
     initCharacterSelectorUI();
     setupEvents();
+    if (window.latestLobbyPlayers && window.myPlayerId) {
+        window.onLobbyPlayersUpdated(window.latestLobbyPlayers, window.myPlayerId);
+    }
     animate();
 };
