@@ -16,13 +16,15 @@ let lastHandledTriggerId = 0;
 let lastHandledMinigameStartId = 0;
 let lastLobbySyncTime = 0;
 let myLobbyRef = null;
+let cachedLobbyPlayers = {};
 
 try {
     const app = initializeApp(firebaseConfig);
     db = getDatabase(app);
+    console.log("🔥 Firebase 초기화 성공! ID:", myPlayerId);
     subscribeLobbyPlayers();
 } catch (err) {
-    console.error("Firebase 연결 오류:", err);
+    console.error("❌ Firebase 연결 오류:", err);
 }
 
 // ==========================================
@@ -33,9 +35,14 @@ function subscribeLobbyPlayers() {
     const lobbyRef = ref(db, "lobby_players");
     onValue(lobbyRef, (snapshot) => {
         const allPlayers = snapshot.val() || {};
+        cachedLobbyPlayers = allPlayers;
+        window.latestLobbyPlayers = allPlayers;
+        console.log("📡 로비 접속자 업데이트:", Object.keys(allPlayers).length, "명", Object.keys(allPlayers));
         if (typeof window.onLobbyPlayersUpdated === "function") {
             window.onLobbyPlayersUpdated(allPlayers, myPlayerId);
         }
+    }, (error) => {
+        console.error("❌ Firebase lobby_players 읽기 오류 (DB 규칙을 확인하세요!):", error);
     });
 }
 
@@ -48,6 +55,13 @@ window.syncJoinLobby = function(playerData) {
         id: myPlayerId,
         inLobby: true,
         updatedAt: Date.now()
+    }).then(() => {
+        console.log("✅ 내 캐릭터 로비 등록 완료:", myPlayerId);
+        if (typeof window.onLobbyPlayersUpdated === "function") {
+            window.onLobbyPlayersUpdated(cachedLobbyPlayers, myPlayerId);
+        }
+    }).catch((err) => {
+        console.error("❌ Firebase lobby_players 쓰기 오류 (DB 규칙을 확인하세요!):", err);
     });
 };
 
