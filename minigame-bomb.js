@@ -8,6 +8,7 @@ let bombStages = [];
 let bombScoreMap = {};
 let myBombScore = 0;
 let currentBombWordObj = null;
+let isWordTransitioning = false;
 
 const BOMB_WORD_BANK = [
     { en: 'APPLE', ko: '사과' }, { en: 'BANANA', ko: '바나나' }, { en: 'TIGER', ko: '호랑이' },
@@ -228,13 +229,27 @@ function pickNextBombWord() {
     document.getElementById('bomb-word-meaning').textContent = `뜻: ${next.ko}`;
     document.getElementById('bomb-target-word').textContent = next.en;
     const inp = document.getElementById('bomb-word-input');
-    inp.value = '';
+    if (inp) {
+        // 입력기(IME) 조합 버퍼를 완전히 비우기 위해 blur 후 초기화 및 재포커스
+        inp.blur();
+        inp.value = '';
+        setTimeout(() => {
+            if (bombSubPhase === 'PLAY') {
+                inp.value = '';
+                inp.focus();
+            }
+            isWordTransitioning = false;
+        }, 15);
+    } else {
+        isWordTransitioning = false;
+    }
 }
 
 function checkBombWordMatch(rawVal) {
-    if (bombSubPhase !== 'PLAY' || !currentBombWordObj) return;
+    if (bombSubPhase !== 'PLAY' || !currentBombWordObj || isWordTransitioning) return;
     const cleaned = (rawVal || '').replace(/\s+/g, '').toUpperCase();
     if (cleaned === currentBombWordObj.en) {
+        isWordTransitioning = true;
         myBombScore += 1;
         document.getElementById('bomb-my-score').textContent = String(myBombScore);
         const myId = window.myPlayerId || 'local';
