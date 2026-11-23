@@ -237,7 +237,6 @@ function confirmCharacterSelection() {
     document.getElementById('open-selector-btn').classList.remove('hidden');
     cameraAngle = 0;
 
-    // 로비(포탈 들판) 실시간 멀티플레이 입장 동기화 (모듈 로딩 타이밍 안전 처리)
     if (playerChameleon) {
         const joinPayload = {
             name: finalNick,
@@ -728,7 +727,6 @@ function animate() {
         const prevZ = g.position.z;
         g.position.lerp(remote.targetPos, 10 * dt);
 
-        // 내 캐릭터와 다른 플레이어가 로비에서 가까이 부딪히면 살짝 밀려남
         if (playerChameleon && !isSelectingCharacter) {
             const dx = playerChameleon.group.position.x - g.position.x;
             const dz = playerChameleon.group.position.z - g.position.z;
