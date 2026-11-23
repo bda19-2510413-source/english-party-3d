@@ -1,5 +1,5 @@
 // ==========================================
-// 3D 로비 들판, 산, 포탈, 파티 룸(소파 + 모니터 룰렛)
+// 3D 로비 들판, 산, 포탈, 파티 룸(소파 + 모니터 룰렛), 폭탄 해체 무대
 // ==========================================
 function initScene() {
     const container = document.getElementById('canvas-container');
@@ -10,7 +10,9 @@ function initScene() {
     lobbyGroup = new THREE.Group();
     partyRoomGroup = new THREE.Group();
     partyRoomGroup.visible = false;
-    scene.add(lobbyGroup, partyRoomGroup);
+    bombGameGroup = new THREE.Group();
+    bombGameGroup.visible = false;
+    scene.add(lobbyGroup, partyRoomGroup, bombGameGroup);
 
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 220);
     camera.position.set(0, 6, 15);
@@ -469,6 +471,115 @@ function createPartyRoom() {
     tvScreen.position.z = 0.16;
     tvGroup.add(tvScreen);
     partyRoomGroup.add(tvGroup);
+}
+
+// ==========================================
+// 미니게임 1: 폭탄 해체하기 3D 무대 생성기
+// ==========================================
+function createBombStageForMember(member, slotIndex) {
+    const stageGroup = new THREE.Group();
+    const baseX = slotIndex * 30;
+    stageGroup.position.set(baseX, 0, 0);
+
+    const floor = new THREE.Mesh(
+        new THREE.CylinderGeometry(6.5, 6.5, 0.3, 32),
+        new THREE.MeshStandardMaterial({ color: 0x2f3542, roughness: 0.7 })
+    );
+    floor.position.y = -0.15;
+    floor.receiveShadow = true;
+
+    const dangerRing = new THREE.Mesh(
+        new THREE.RingGeometry(2.6, 3.0, 32),
+        new THREE.MeshBasicMaterial({ color: 0xff4757, side: THREE.DoubleSide })
+    );
+    dangerRing.rotation.x = -Math.PI / 2;
+    dangerRing.position.y = 0.02;
+
+    const backWall = new THREE.Mesh(
+        new THREE.BoxGeometry(14, 9, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x1e272e, roughness: 0.85 })
+    );
+    backWall.position.set(0, 4.5, -4.5);
+
+    const spotLight = new THREE.PointLight(0xffdd59, 1.4, 18);
+    spotLight.position.set(0, 5.5, 3.5);
+    stageGroup.add(floor, dangerRing, backWall, spotLight);
+
+    const charObj = new JellyCharacter(
+        member.charType || 'chameleon',
+        member.colorHex !== undefined ? member.colorHex : 0x2ed573,
+        -0.75,
+        0.2,
+        member.name || '플레이어',
+        stageGroup
+    );
+    charObj.group.rotation.y = 0.25;
+
+    const ropeGroup = new THREE.Group();
+    const ropeMat = new THREE.MeshStandardMaterial({ color: 0xd4a373, roughness: 0.9 });
+    [0.58, 0.82, 1.06].forEach((ry, idx) => {
+        const ropeRing = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.075, 10, 24), ropeMat);
+        ropeRing.rotation.x = Math.PI / 2 + (idx - 1) * 0.12;
+        ropeRing.position.set(0, ry, 0.02);
+        ropeGroup.add(ropeRing);
+    });
+    charObj.bodyPivot.add(ropeGroup);
+
+    const bombGroup = new THREE.Group();
+    bombGroup.position.set(0.95, 0, 0.35);
+
+    const bombSphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.78, 24, 24),
+        new THREE.MeshStandardMaterial({ color: 0x1e272e, roughness: 0.3, metalness: 0.4 })
+    );
+    bombSphere.position.y = 0.78;
+    bombSphere.castShadow = true;
+
+    const bombCap = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.24, 0.28, 0.22, 16),
+        new THREE.MeshStandardMaterial({ color: 0x747d8c, metalness: 0.6 })
+    );
+    bombCap.position.y = 1.56;
+
+    const bombLed = new THREE.Mesh(
+        new THREE.SphereGeometry(0.16, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0xff4757 })
+    );
+    bombLed.position.set(0, 0.95, 0.74);
+
+    const spark = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.18, 0),
+        new THREE.MeshBasicMaterial({ color: 0xffa502 })
+    );
+    spark.position.set(0, 1.82, 0);
+
+    bombGroup.add(bombSphere, bombCap, bombLed, spark);
+    stageGroup.add(bombGroup);
+
+    const explosionMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.5, 20, 20),
+        new THREE.MeshBasicMaterial({ color: 0xff6b35, transparent: true, opacity: 0.95 })
+    );
+    explosionMesh.position.set(0.4, 1.1, 0.3);
+    explosionMesh.visible = false;
+    stageGroup.add(explosionMesh);
+
+    bombGameGroup.add(stageGroup);
+
+    return {
+        member,
+        baseX,
+        stageGroup,
+        charObj,
+        ropeGroup,
+        bombGroup,
+        bombLed,
+        spark,
+        explosionMesh,
+        score: 0,
+        isWinner: false,
+        exploded: false
+    };
 }
 
 function drawRouletteMonitor() {
