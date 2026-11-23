@@ -1,8 +1,139 @@
 // ==========================================
+// Firebase Realtime Database 실시간 멀티플레이 동기화 모듈
+// ==========================================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, set, get, update, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const firebaseConfig = {
+    databaseURL: "https://english-party-3d-default-rtdb.firebaseio.com/"
+};
+
+let db = null;
+const myPlayerId = "p_" + Math.random().toString(36).substring(2, 10) + "_" + Date.now().toString(36);
+window.myPlayerId = myPlayerId;
+
+let lastHandledTriggerId = 0;
+let lastHandledMinigameStartId = 0;
+let lastLobbySyncTime = 0;
+let myLobbyRef = null;
+
+try {
+    const app = initializeApp(firebaseConfig);
+    db = getDatabase(app);
+    subscribeLobbyPlayers();
+} catch (err) {
+    console.error("Firebase 연결 오류:", err);
+}
+
+// ==========================================
+// 1. 로비(포탈 들판) 실시간 위치 & 밀치기 동기화
+// ==========================================
+function subscribeLobbyPlayers() {
+    if (!db) return;
+    const lobbyRef = ref(db, "lobby_players");
+    onValue(lobbyRef, (snapshot) => {
+        const allPlayers = snapshot.val() || {};
+        if (typeof window.onLobbyPlayersUpdated === "function") {
+            window.onLobbyPlayersUpdated(allPlayers, myPlayerId);
+        }
+    });
+}
+
+window.syncJoinLobby = function(playerData) {
+    if (!db) return;
+    myLobbyRef = ref(db, `lobby_players/${myPlayerId}`);
+    onDisconnect(myLobbyRef).remove();
+    set(myLobbyRef, {
+        ...playerData,
+        id: myPlayerId,
+        inLobby: true,
+        updatedAt: Date.now()
+    });
+};
+
+window.syncUpdateLobbyState = function(playerData, force = false) {
+    if (!db) return;
+    const now = Date.now();
+    if (!force && now - lastLobbySyncTime < 75) return;
+    lastLobbySyncTime = now;
+
+    if (!myLobbyRef) {
+        myLobbyRef = ref(db, `lobby_players/${myPlayerId}`);
+        onDisconnect(myLobbyRef).remove();
+    }
+    update(myLobbyRef, {
+        ...playerData,
+        id: myPlayerId,
+        updatedAt: now
+    });
+};
+
+window.syncLobbyShove = function(targetId, pushVx, pushVz) {
+    if (!db || !myLobbyRef) return;
+    update(myLobbyRef, {
+        shoveEventId: Date.now(),
+        shoveTargetId: targetId || "",
+        shoveVx: pushVx || 0,
+        shoveVz: pushVz || 0,
+        updatedAt: Date.now()
+    });
+};
+
+// ==========================================
+// 2. 파티 룸(방 생성 / 참가 / 룰렛) 동기화
+// ==========================================
+window.syncCreateRoom = async function(roomInfo, hostMember) {
+    if (!db) return;
+    const code = roomInfo.code;
+    await set(ref(db, `rooms/${code}`), {
+        code: code,
+        hostId: myPlayerId,
+        totalRounds: roomInfo.totalRounds,
+        currentRound: 1,
+        rouletteTriggerId: 0,
+        rouletteTargetIndex: 0,
+        minigameState: null,
+        members: {
+            [myPlayerId]: {
+                ...hostMember,
+                id: myPlayerId,
+                points: 0,
+                joinedAt: Date.now()
+            }
+        }
+    });
+    subscribeRoom(code);
+};
+
+window.syncJoinRoom = async function(code, guestMember) {
+    if (!db) return { ok: false, error: "서버 연결 중입니다. 잠시 후 다시 시도하세요." };
+    const roomSnap = await get(ref(db, `rooms/${code}`));
+    if (!roomSnap.exists()) {
+        return { ok: false, error: "존재하지 않는 방 번호입니다!" };
+    }
+    const roomData = roomSnap.val();
+    await set(ref(db, `rooms/${code}/members/${myPlayerId}`), {
+        ...guestMember,
+        id: myPlayerId,
+        points: 0,
+        joinedAt: Date.now()
+    });
+    subscribeRoom(code);
+    return { ok: true, totalRounds: roomData.totalRounds || 5 };
+};
+
+window.syncSpinRoulette = async function(code, triggerId, targetIdx) {
+    if (!db || !code) return;
+    lastHandledTriggerId = triggerId;
+    await update(ref(db, `rooms/${code}`), {
+        rouletteTriggerId: triggerId,
+        rouletteTargetIndex: targetIdx
+    });
+};
+
+// ==========================================
 // 3. 공통 미니게임 실시간 동기화 (열몇 개 미니게임 공용)
 // ==========================================
-let lastHandledMinigameStartId = 0;
-
 window.syncStartMinigame = async function(code, gameType = 'BOMB_DEFUSAL') {
     if (!db || !code) return;
     const startId = Date.now();
