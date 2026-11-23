@@ -190,3 +190,9 @@ function subscribeRoom(code) {
         }
     });
 }
+
+// main.js가 먼저 실행되어 대기 중인 로비 입장이 있다면 즉시 실행
+if (window.pendingLobbyJoin) {
+    window.syncJoinLobby(window.pendingLobbyJoin);
+    window.pendingLobbyJoin = null;
+}

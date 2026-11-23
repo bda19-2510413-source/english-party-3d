@@ -237,9 +237,9 @@ function confirmCharacterSelection() {
     document.getElementById('open-selector-btn').classList.remove('hidden');
     cameraAngle = 0;
 
-    // 로비(포탈 들판) 실시간 멀티플레이 입장 동기화
-    if (window.syncJoinLobby && playerChameleon) {
-        window.syncJoinLobby({
+    // 로비(포탈 들판) 실시간 멀티플레이 입장 동기화 (모듈 로딩 타이밍 안전 처리)
+    if (playerChameleon) {
+        const joinPayload = {
             name: finalNick,
             charType: selectedCharType,
             colorHex: selectedColorHex,
@@ -247,7 +247,12 @@ function confirmCharacterSelection() {
             y: playerChameleon.group.position.y,
             z: playerChameleon.group.position.z,
             rotY: playerChameleon.group.rotation.y
-        });
+        };
+        if (window.syncJoinLobby) {
+            window.syncJoinLobby(joinPayload);
+        } else {
+            window.pendingLobbyJoin = joinPayload;
+        }
     }
 }
 
@@ -704,24 +709,24 @@ function animate() {
                         document.getElementById('party-status-text').textContent =
                             `🎉 선택된 게임: ${selectedRouletteGame.icon} ${selectedRouletteGame.title}`;
                         const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
-                        const spinBtn = document.getElementById('spin-roulette-btn');
-                        spinBtn.textContent = '룰렛 다시 돌리기 🎰';
-                        spinBtn.classList.toggle('hidden', !isHost);
-                    }
-                }
-                drawRouletteMonitor();
-            }
-        }
-        renderer.render(scene, camera);
-        return;
-    }
-
-    // 로비 다른 플레이어 위치 보간 및 걷기 애니메이션 업데이트
+    // 로비 다른 플레이어 위치 보간, 몸통 부딪힘 반발 및 걷기 애니메이션 업데이트
     Object.values(remoteLobbyPlayers).forEach(remote => {
         const g = remote.char.group;
         const prevX = g.position.x;
         const prevZ = g.position.z;
         g.position.lerp(remote.targetPos, 10 * dt);
+
+        // 내 캐릭터와 다른 플레이어가 로비에서 가까이 부딪히면 살짝 밀려남
+        if (playerChameleon && !isSelectingCharacter) {
+            const dx = playerChameleon.group.position.x - g.position.x;
+            const dz = playerChameleon.group.position.z - g.position.z;
+            const dist = Math.hypot(dx, dz);
+            if (dist > 0.01 && dist < 1.15) {
+                const push = (1.15 - dist) * 6.5 * dt;
+                playerChameleon.group.position.x += (dx / dist) * push;
+                playerChameleon.group.position.z += (dz / dist) * push;
+            }
+        }
 
         let diff = remote.targetRotY - g.rotation.y;
         while (diff < -Math.PI) diff += Math.PI * 2;
