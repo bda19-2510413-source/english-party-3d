@@ -167,6 +167,8 @@ window.syncUpdateMinigameScore = function(code, score) {
     update(ref(db, `rooms/${code}/minigameState/scores`), {
         [myPlayerId]: score
     });
+};
+
 window.syncReturnToPartyRoom = async function(code, nextRound) {
     if (!db || !code) return;
     const payload = { minigameState: null };
