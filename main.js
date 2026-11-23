@@ -709,6 +709,18 @@ function animate() {
                         document.getElementById('party-status-text').textContent =
                             `🎉 선택된 게임: ${selectedRouletteGame.icon} ${selectedRouletteGame.title}`;
                         const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
+                        if (isHost) {
+                            const spinBtn = document.getElementById('spin-roulette-btn');
+                            spinBtn.textContent = '다시 돌리기 🎰';
+                            spinBtn.classList.remove('hidden');
+                        }
+                    }
+                }
+            }
+            drawRouletteMonitor();
+        }
+    }
+
     // 로비 다른 플레이어 위치 보간, 몸통 부딪힘 반발 및 걷기 애니메이션 업데이트
     Object.values(remoteLobbyPlayers).forEach(remote => {
         const g = remote.char.group;
