@@ -37,7 +37,6 @@ function subscribeLobbyPlayers() {
         const allPlayers = snapshot.val() || {};
         cachedLobbyPlayers = allPlayers;
         window.latestLobbyPlayers = allPlayers;
-        console.log("📡 로비 접속자 업데이트:", Object.keys(allPlayers).length, "명", Object.keys(allPlayers));
         if (typeof window.onLobbyPlayersUpdated === "function") {
             window.onLobbyPlayersUpdated(allPlayers, myPlayerId);
         }
@@ -56,12 +55,11 @@ window.syncJoinLobby = function(playerData) {
         inLobby: true,
         updatedAt: Date.now()
     }).then(() => {
-        console.log("✅ 내 캐릭터 로비 등록 완료:", myPlayerId);
         if (typeof window.onLobbyPlayersUpdated === "function") {
             window.onLobbyPlayersUpdated(cachedLobbyPlayers, myPlayerId);
         }
     }).catch((err) => {
-        console.error("❌ Firebase lobby_players 쓰기 오류 (DB 규칙을 확인하세요!):", err);
+        console.error("❌ Firebase lobby_players 쓰기 오류:", err);
     });
 };
 
@@ -146,7 +144,7 @@ window.syncSpinRoulette = async function(code, triggerId, targetIdx) {
 };
 
 // ==========================================
-// 3. 공통 미니게임 실시간 동기화 (열몇 개 미니게임 공용)
+// 3. 공통 미니게임 실시간 동기화
 // ==========================================
 window.syncStartMinigame = async function(code, gameType = 'BOMB_DEFUSAL') {
     if (!db || !code) return;
