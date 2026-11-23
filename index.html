@@ -47,9 +47,65 @@
         <button id="spin-roulette-btn" type="button" onclick="triggerRouletteSpin()" class="hidden jelly-btn bg-amber-500 hover:bg-amber-400 text-white font-black text-xs md:text-sm px-5 py-2 rounded-full shadow-lg">
             룰렛 돌리기! 🎰
         </button>
+        <button id="start-minigame-btn" type="button" onclick="triggerStartSelectedMinigame()" class="hidden jelly-btn bg-rose-600 hover:bg-rose-500 text-white font-black text-xs md:text-sm px-5 py-2 rounded-full shadow-lg animate-bounce">
+            미니게임 시작! 💣
+        </button>
         <button id="return-lobby-btn" type="button" onclick="returnToLobby()" class="jelly-btn bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs md:text-sm px-4 py-2 rounded-full shadow">
             로비로 복귀
         </button>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 미니게임 1: 폭탄 해체하기 (BOMB DEFUSAL) 오버레이 -->
+    <!-- ========================================== -->
+    <div id="bomb-game-overlay" class="hidden fixed inset-0 z-50 pointer-events-none flex flex-col justify-between">
+        <!-- 분할 화면 경계선 & 플레이어 이름/점수 배지 컨테이너 -->
+        <div id="bomb-split-labels" class="fixed inset-0 pointer-events-none"></div>
+
+        <!-- 상단 타이머 & 안내 배너 -->
+        <div class="relative z-20 flex flex-col items-center pt-4 px-4">
+            <div class="glass-panel rounded-full px-6 py-2 flex items-center gap-4 shadow-xl border-2 border-rose-400">
+                <span class="text-2xl">💣</span>
+                <span id="bomb-phase-banner" class="font-black text-slate-800 text-base md:text-lg">폭탄에 묶였다! 해체 준비!</span>
+                <div class="bg-rose-600 text-white font-black text-lg md:text-xl px-4 py-1 rounded-full min-w-[78px] text-center shadow-inner">
+                    <span id="bomb-timer-text">30.0</span>s
+                </div>
+            </div>
+        </div>
+
+        <!-- 중앙 하단: 내 폭탄 해체 영단어 타이핑 패널 -->
+        <div id="bomb-typing-panel" class="hidden relative z-20 mx-auto mb-8 w-full max-w-md px-4 pointer-events-auto">
+            <div class="glass-panel rounded-3xl p-5 text-center border-4 border-amber-400 shadow-2xl">
+                <div class="flex items-center justify-between text-xs font-black text-slate-500 mb-1">
+                    <span>✂️ 전선 절단 암호 입력</span>
+                    <span class="text-indigo-600">해체 완료: <strong id="bomb-my-score" class="text-base">0</strong>개</span>
+                </div>
+                <div id="bomb-word-meaning" class="text-sm font-bold text-amber-600 mb-1">사과</div>
+                <div id="bomb-target-word" class="text-3xl md:text-4xl font-black tracking-[0.22em] text-slate-900 bg-slate-100 rounded-2xl py-2.5 px-3 mb-3 border-2 border-slate-200 select-all">
+                    APPLE
+                </div>
+                <input id="bomb-word-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                    placeholder="영단어를 똑같이 입력하세요!"
+                    oninput="onBombWordInput(this.value)"
+                    class="w-full text-center text-2xl font-black tracking-widest uppercase px-4 py-2.5 rounded-2xl bg-white border-3 border-indigo-400 focus:border-rose-500 focus:outline-none text-slate-800 shadow-inner" />
+            </div>
+        </div>
+
+        <!-- 결과 순위표 모달 -->
+        <div id="bomb-result-panel" class="hidden relative z-30 m-auto w-full max-w-md px-4 pointer-events-auto">
+            <div class="glass-panel rounded-3xl p-6 text-center border-4 border-indigo-400 shadow-2xl">
+                <div class="text-4xl mb-1">🏆</div>
+                <h2 class="text-2xl font-black text-slate-800 mb-1">폭탄 해체 결과!</h2>
+                <p id="bomb-winner-desc" class="text-sm font-bold text-emerald-600 mb-4">1등만 탈출 성공! 나머지는 쾅! 💥</p>
+                <div id="bomb-ranking-list" class="space-y-2 mb-5 text-left"></div>
+                <button id="bomb-next-round-btn" type="button" onclick="finishBombMinigameToRoom()" class="hidden w-full jelly-btn bg-indigo-600 hover:bg-indigo-500 text-white font-black py-3 rounded-2xl shadow-lg">
+                    파티 룸으로 돌아가기 🛋️
+                </button>
+                <div id="bomb-guest-next-wait" class="hidden text-xs font-bold text-slate-500 py-2">
+                    방장이 다음 라운드로 이동할 때까지 대기 중... ⏳
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- 3D 캐릭터 쇼케이스 선택 화면 -->
@@ -149,9 +205,9 @@
     </div>
 
     <!-- 모듈 스크립트 로드 -->
-    <script src="character.js?v=2"></script>
-    <script src="world.js?v=2"></script>
-    <script type="module" src="firebase-sync.js?v=2"></script>
-    <script src="main.js?v=2"></script>
+    <script src="character.js?v=4"></script>
+    <script src="world.js?v=4"></script>
+    <script type="module" src="firebase-sync.js?v=4"></script>
+    <script src="main.js?v=4"></script>
 </body>
 </html>
