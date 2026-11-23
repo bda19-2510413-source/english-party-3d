@@ -167,13 +167,13 @@ window.syncUpdateMinigameScore = function(code, score) {
     update(ref(db, `rooms/${code}/minigameState/scores`), {
         [myPlayerId]: score
     });
-};
-
-window.syncReturnToPartyRoom = async function(code) {
+window.syncReturnToPartyRoom = async function(code, nextRound) {
     if (!db || !code) return;
-    await update(ref(db, `rooms/${code}`), {
-        minigameState: null
-    });
+    const payload = { minigameState: null };
+    if (typeof nextRound === 'number') {
+        payload.currentRound = nextRound;
+    }
+    await update(ref(db, `rooms/${code}`), payload);
 };
 
 window.syncSaveRoundPoints = async function(code, updatedMembers) {
