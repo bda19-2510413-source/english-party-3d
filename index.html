@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>English Party 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Noto+Sans+KR:wght@500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Fredoka', 'Noto Sans KR', sans-serif; user-select: none; background-color: #87CEEB; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        .glass-panel { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); border: 3px solid rgba(255, 255, 255, 0.9); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15); }
+        .jelly-btn { transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .jelly-btn:hover { transform: scale(1.06); }
+        .jelly-btn:active { transform: scale(0.94); }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <!-- 우측 상단 외형/닉네임 변경 버튼 -->
+    <button id="open-selector-btn" onclick="openCharacterSelector()" class="hidden fixed top-4 right-4 z-30 glass-panel jelly-btn rounded-2xl px-4 py-2.5 flex items-center gap-2 font-bold text-slate-800 text-sm">
+        <span id="current-char-color-dot" class="w-4 h-4 rounded-full border border-white shadow-sm" style="background-color: #2ed573;"></span>
+        <span id="current-char-emoji" class="text-xl">🦎</span>
+        <span id="current-char-name">카멜레온</span>
+    </button>
+
+    <!-- 좌측 상단 방 코드 HUD -->
+    <div id="room-status-hud" class="hidden fixed top-4 left-4 z-30 glass-panel rounded-2xl px-4 py-2.5 flex items-center gap-3">
+        <div>
+            <div class="text-[10px] font-black text-indigo-500">ROOM CODE</div>
+            <div id="hud-room-code" class="text-base font-black text-slate-800 tracking-wider">000000</div>
+        </div>
+        <button id="hud-start-game-btn" type="button" onclick="startPartySequence()" class="jelly-btn bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm px-4 py-2 rounded-xl shadow-md">
+            게임 시작! 🎮
+        </button>
+        <span id="hud-guest-wait-badge" class="hidden text-xs font-bold text-slate-500 bg-slate-200/80 px-3 py-1.5 rounded-xl">
+            방장 대기 중... ⏳
+        </span>
+    </div>
+
+    <!-- 파티 룸(소파 & 모니터 룰렛) 진행 HUD -->
+    <div id="party-room-hud" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 glass-panel rounded-full px-6 py-3 flex items-center gap-3 md:gap-4 shadow-2xl">
+        <span id="party-round-badge" class="bg-indigo-600 text-white font-black text-xs px-3 py-1 rounded-full">1 / 5판</span>
+        <span id="party-status-text" class="font-black text-slate-800 text-sm md:text-base">🛋️ 소파에 자리 잡는 중...</span>
+        <button id="spin-roulette-btn" type="button" onclick="triggerRouletteSpin()" class="hidden jelly-btn bg-amber-500 hover:bg-amber-400 text-white font-black text-xs md:text-sm px-5 py-2 rounded-full shadow-lg">
+            룰렛 돌리기! 🎰
+        </button>
+        <button id="return-lobby-btn" type="button" onclick="returnToLobby()" class="jelly-btn bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs md:text-sm px-4 py-2 rounded-full shadow">
+            로비로 복귀
+        </button>
+    </div>
+
+    <!-- 3D 캐릭터 쇼케이스 선택 화면 -->
+    <div id="character-select-overlay" class="fixed inset-0 z-40 flex flex-col justify-between p-4 md:p-8 pointer-events-none">
+        <div class="flex flex-col items-center mt-2 pointer-events-auto">
+            <div class="glass-panel rounded-full px-6 py-2 flex items-center gap-3 shadow-lg">
+                <span id="showcase-emoji" class="text-2xl md:text-3xl">🦎</span>
+                <span id="showcase-name" class="text-xl md:text-2xl font-black text-slate-800 tracking-tight">카멜레온</span>
+                <span id="showcase-index" class="text-xs font-bold bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full">1 / 11</span>
+            </div>
+        </div>
+
+        <div class="flex items-center justify-between w-full max-w-4xl mx-auto my-auto pointer-events-none">
+            <button type="button" onclick="prevCharacter()" class="pointer-events-auto jelly-btn glass-panel w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center text-2xl md:text-3xl font-black text-slate-800 shadow-xl hover:bg-white">◀</button>
+            <button type="button" onclick="nextCharacter()" class="pointer-events-auto jelly-btn glass-panel w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center text-2xl md:text-3xl font-black text-slate-800 shadow-xl hover:bg-white">▶</button>
+        </div>
+
+        <div class="glass-panel rounded-3xl max-w-3xl w-full mx-auto p-4 md:p-5 pointer-events-auto shadow-2xl">
+            <div id="character-grid" class="flex items-center gap-2 overflow-x-auto pb-2 mb-3 justify-start sm:justify-center"></div>
+            <div class="flex items-center justify-center gap-2 flex-wrap py-2 border-t border-slate-200/80">
+                <span class="text-xs font-black text-slate-500 mr-1">COLOR</span>
+                <div id="color-palette" class="flex items-center gap-2 flex-wrap justify-center"></div>
+            </div>
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 mt-2 border-t border-slate-200/80">
+                <div class="flex items-center gap-2 w-full sm:flex-1">
+                    <span class="text-xs font-black text-slate-500 whitespace-nowrap">NICKNAME</span>
+                    <input id="start-nickname-input" type="text" maxlength="10" placeholder="닉네임 입력 (예: 민수)" oninput="onNicknameInput(this.value)" class="w-full px-4 py-2.5 rounded-2xl bg-white border-2 border-slate-200 focus:border-indigo-500 focus:outline-none font-bold text-slate-800 text-sm md:text-base shadow-inner" />
+                </div>
+                <button type="button" onclick="confirmCharacterSelection()" class="jelly-btn w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-black text-base md:text-lg px-8 py-2.5 rounded-2xl shadow-lg whitespace-nowrap">
+                    입장하기! 🚀
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 근접 상호작용 안내 -->
+    <div id="interaction-prompt" class="fixed bottom-28 left-1/2 -translate-x-1/2 glass-panel rounded-full px-6 py-3 flex items-center gap-3 opacity-0 transition-opacity duration-300 pointer-events-none">
+        <span id="prompt-icon" class="text-2xl">🌀</span>
+        <span id="prompt-text" class="font-bold text-slate-800 text-sm md:text-base">포탈 입장 준비 완료!</span>
+        <button id="prompt-action-btn" onclick="triggerInteraction()" class="pointer-events-auto jelly-btn bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-1.5 rounded-full text-sm shadow">
+            입장하기 (Space)
+        </button>
+    </div>
+
+    <!-- 포탈 팀 생성 / 참가 모달 -->
+    <div id="custom-modal" class="fixed inset-0 bg-black/45 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="glass-panel rounded-3xl max-w-md w-full p-6 md:p-7 text-center transform transition-all relative">
+            <button type="button" onclick="closeModal()" class="absolute top-4 right-4 w-9 h-9 rounded-full bg-slate-200/80 hover:bg-slate-300 text-slate-700 font-black flex items-center justify-center">✕</button>
+
+            <div id="portal-step-select">
+                <div class="text-5xl mb-2">🌀</div>
+                <h2 class="text-2xl font-black text-slate-800 mb-1">파티 포탈 입장</h2>
+                <p class="text-slate-500 text-sm mb-2">새로운 팀 방을 만들거나 방 번호로 참가하세요!</p>
+                <div class="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs px-3.5 py-1.5 rounded-full mb-4">
+                    <span>참가자:</span>
+                    <span id="portal-current-nickname" class="font-black">카멜레온</span>
+                </div>
+
+                <div class="bg-slate-100/90 rounded-2xl p-3 mb-4 border border-slate-200">
+                    <div class="text-xs font-black text-slate-500 mb-2">총 게임 횟수 선택 (팀 생성 시 적용)</div>
+                    <div id="round-selector-group" class="grid grid-cols-4 gap-2">
+                        <button type="button" data-rounds="3" onclick="selectTotalRounds(3)" class="round-opt-btn jelly-btn py-2 rounded-xl font-black text-sm bg-white text-slate-700 border-2 border-transparent">3판</button>
+                        <button type="button" data-rounds="5" onclick="selectTotalRounds(5)" class="round-opt-btn jelly-btn py-2 rounded-xl font-black text-sm bg-indigo-600 text-white border-2 border-indigo-600 shadow">5판</button>
+                        <button type="button" data-rounds="7" onclick="selectTotalRounds(7)" class="round-opt-btn jelly-btn py-2 rounded-xl font-black text-sm bg-white text-slate-700 border-2 border-transparent">7판</button>
+                        <button type="button" data-rounds="10" onclick="selectTotalRounds(10)" class="round-opt-btn jelly-btn py-2 rounded-xl font-black text-sm bg-white text-slate-700 border-2 border-transparent">10판</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <button type="button" onclick="createTeamAndEnterRoom()" class="jelly-btn bg-indigo-600 hover:bg-indigo-500 text-white p-4 rounded-2xl shadow-lg flex flex-col items-center gap-1.5">
+                        <span class="text-3xl">👑</span>
+                        <span class="font-black text-base">팀 생성 & 입장</span>
+                        <span class="text-[11px] text-indigo-100 font-medium">방 번호 발급 후 파티룸 이동</span>
+                    </button>
+                    <button type="button" onclick="showJoinTeamStep()" class="jelly-btn bg-emerald-500 hover:bg-emerald-400 text-white p-4 rounded-2xl shadow-lg flex flex-col items-center gap-1.5">
+                        <span class="text-3xl">🔑</span>
+                        <span class="font-black text-base">팀 참가</span>
+                        <span class="text-[11px] text-emerald-100 font-medium">방 번호 입력 후 바로 입장</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="portal-step-join" class="hidden">
+                <div class="text-4xl mb-2">🔑</div>
+                <h2 class="text-xl font-black text-slate-800 mb-1">팀 방 참가하기</h2>
+                <p class="text-slate-500 text-xs mb-5">팀장이 알려준 6자리 방 번호를 입력하세요</p>
+                <div class="mb-4">
+                    <input id="join-room-code-input" type="text" inputmode="numeric" maxlength="6" placeholder="000000" class="w-full text-center text-3xl font-black tracking-[0.35em] px-4 py-3.5 rounded-2xl bg-white border-2 border-emerald-300 focus:border-emerald-500 focus:outline-none text-slate-800" />
+                    <div id="join-error-msg" class="text-xs font-bold text-rose-500 mt-2 h-4"></div>
+                </div>
+                <div class="flex gap-2">
+                    <button type="button" onclick="resetPortalModal()" class="jelly-btn flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 rounded-2xl">뒤로가기</button>
+                    <button type="button" onclick="submitJoinRoom()" class="jelly-btn flex-1 bg-emerald-500 hover:bg-emerald-400 text-white font-black py-3 rounded-2xl shadow-md">방 입장하기!</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 모듈 스크립트 로드 -->
+    <script src="character.js"></script>
+    <script src="world.js"></script>
+    <script type="module" src="firebase-sync.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
