@@ -5,7 +5,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getDatabase, ref, set, get, update, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const firebaseConfig = {
-    databaseURL: "https://english-party-3d-default-rtdb.firebaseio.com/"
+    databaseURL: "https://english-party-3d-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
 
 let db = null;
