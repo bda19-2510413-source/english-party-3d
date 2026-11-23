@@ -110,6 +110,7 @@ function setupEvents() {
         if (dragDistance < 6 && !isSelectingCharacter && gamePhase === 'LOBBY' && playerChameleon) {
             if (document.getElementById('custom-modal').classList.contains('hidden')) {
                 playerChameleon.shove();
+                handleLocalLobbyShove();
             }
         }
     });
@@ -209,6 +210,18 @@ function updateShowcaseUI() {
     });
 }
 
+function openCharacterSelector() {
+    if (gamePhase !== 'LOBBY') return;
+    isSelectingCharacter = true;
+    keys.up = keys.down = keys.left = keys.right = false;
+    if (showcasePedestal && playerChameleon) {
+        showcasePedestal.position.set(playerChameleon.group.position.x, 0.04, playerChameleon.group.position.z);
+        showcasePedestal.visible = true;
+    }
+    document.getElementById('character-select-overlay').classList.remove('hidden');
+    document.getElementById('open-selector-btn').classList.add('hidden');
+}
+
 function confirmCharacterSelection() {
     const charInfo = CHARACTER_TYPES[selectedCharIndex];
     const colorObj = JELLY_COLORS.find(c => c.hex === selectedColorHex);
@@ -235,6 +248,21 @@ function confirmCharacterSelection() {
             z: playerChameleon.group.position.z,
             rotY: playerChameleon.group.rotation.y
         });
+    }
+}
+
+function checkProximity() {
+    if (!playerChameleon) return;
+    const pPos = playerChameleon.group.position;
+    const distToPortal = Math.hypot(pPos.x - 0, pPos.z - (-9));
+    const promptEl = document.getElementById('interaction-prompt');
+
+    if (distToPortal < 4.3) {
+        currentNearObject = 'PORTAL';
+        promptEl.classList.remove('opacity-0', 'pointer-events-none');
+    } else {
+        currentNearObject = null;
+        promptEl.classList.add('opacity-0', 'pointer-events-none');
     }
 }
 
@@ -346,7 +374,6 @@ window.onLobbyPlayersUpdated = function(allPlayers, myId) {
 
     Object.entries(allPlayers).forEach(([pid, pData]) => {
         if (pid === myId) return;
-        // 파티 룸에 들어갔거나 15초 이상 응답 없는 플레이어는 로비에서 숨김
         if (!pData.inLobby || (pData.updatedAt && now - pData.updatedAt > 15000)) return;
         activeIds.add(pid);
 
@@ -380,7 +407,6 @@ window.onLobbyPlayersUpdated = function(allPlayers, myId) {
             remote.targetRotY = pData.rotY || 0;
         }
 
-        // 상대방이 밀치기를 사용했을 때 이펙트 및 피격 넉백 적용
         if (pData.shoveEventId && pData.shoveEventId !== remote.lastShoveEventId) {
             remote.lastShoveEventId = pData.shoveEventId;
             const forward = new THREE.Vector3(Math.sin(remote.targetRotY), 0, Math.cos(remote.targetRotY));
@@ -396,7 +422,6 @@ window.onLobbyPlayersUpdated = function(allPlayers, myId) {
         }
     });
 
-    // 로비를 떠난 플레이어 제거
     Object.keys(remoteLobbyPlayers).forEach(pid => {
         if (!activeIds.has(pid)) {
             lobbyGroup.remove(remoteLobbyPlayers[pid].char.group);
@@ -405,7 +430,6 @@ window.onLobbyPlayersUpdated = function(allPlayers, myId) {
     });
 };
 
-// 내가 로비에서 좌클릭 밀치기를 할 때 주변 다른 플레이어 넉백 처리
 function handleLocalLobbyShove() {
     if (!playerChameleon || gamePhase !== 'LOBBY') return;
     const myPos = playerChameleon.group.position;
@@ -441,7 +465,6 @@ window.onRoomMembersUpdated = function() {
     }
 };
 
-// 기존 앉아 있는 캐릭터는 그대로 두고 새로 들어온 플레이어만 소파로 걸어가 앉도록 관리
 function syncSofaCharacters() {
     const seatXPositions = [-2.4, -0.8, 0.8, 2.4, -3.1];
     const members = (window.currentRoomInfo && window.currentRoomInfo.members.length > 0)
@@ -471,12 +494,10 @@ function syncSofaCharacters() {
                 jumped: false
             };
         } else {
-            // 이미 방에 있는 캐릭터는 seated 상태와 포즈를 그대로 유지!
             roomCharacterMap[mId].targetX = seatX;
         }
     });
 
-    // 방에서 나간 멤버만 제거
     Object.keys(roomCharacterMap).forEach(mId => {
         if (!activeMemberIds.has(mId)) {
             partyRoomGroup.remove(roomCharacterMap[mId].char.group);
@@ -493,7 +514,6 @@ function startPartySequence() {
     document.getElementById('open-selector-btn').classList.add('hidden');
     document.getElementById('room-status-hud').classList.add('hidden');
 
-    // 로비에서는 퇴장 상태로 표시
     if (window.syncUpdateLobbyState && playerChameleon) {
         window.syncUpdateLobbyState({
             name: getPlayerNickname(),
@@ -512,7 +532,6 @@ function startPartySequence() {
     scene.background = new THREE.Color(0xdff9fb);
     scene.fog = new THREE.Fog(0xdff9fb, 35, 95);
 
-    // 이전 파티룸 캐릭터 맵 초기화 후 현재 멤버 배치
     Object.values(roomCharacterMap).forEach(rc => partyRoomGroup.remove(rc.char.group));
     roomCharacterMap = {};
     syncSofaCharacters();
@@ -640,7 +659,6 @@ function animate() {
                     rc.char.bodyPivot.rotation.x = -0.12;
                 }
             } else {
-                // 이미 앉은 캐릭터는 좌석 X 미세 보정 및 부드러운 호흡 모션만 재생
                 pos.x += (rc.targetX - pos.x) * 6 * dt;
                 const idleBounce = Math.sin(elapsed * 3.5 + rc.targetX) * 0.035;
                 rc.char.bodyPivot.position.y = idleBounce;
@@ -722,56 +740,6 @@ function animate() {
             remote.char.rightLeg.position.z = 0;
         }
     });
-
-        if (gamePhase === 'ROOM_SOFA') {
-            camera.position.lerp(new THREE.Vector3(0, 3.6, 7.6), 4 * dt);
-            camera.lookAt(0, 2.6, -3.2);
-
-            if (allSeated) {
-                const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
-                const spinBtn = document.getElementById('spin-roulette-btn');
-                if (isHost) {
-                    spinBtn.textContent = '룰렛 돌리기! 🎰';
-                    spinBtn.classList.remove('hidden');
-                    document.getElementById('party-status-text').textContent = '🛋️ 착석 완료! 룰렛 돌리기 버튼을 눌러주세요';
-                } else {
-                    spinBtn.classList.add('hidden');
-                    document.getElementById('party-status-text').textContent = '🛋️ 착석 완료! 방장이 룰렛을 돌릴 때까지 대기 중...';
-                }
-            }
-        } else if (gamePhase === 'ROOM_MONITOR') {
-            camera.position.lerp(new THREE.Vector3(0, 6.4, 2.35), 3.2 * dt);
-            camera.lookAt(0, 6.4, -6.05);
-
-            if (rouletteState === 'SPINNING') {
-                rouletteOffset += rouletteVelocity * dt;
-                rouletteVelocity *= Math.pow(0.42, dt);
-
-                if (rouletteVelocity < 0.45) {
-                    const total = ROULETTE_GAMES.length;
-                    const currentBase = Math.floor(rouletteOffset / total) * total;
-                    let targetSlot = currentBase + rouletteTargetIndex;
-                    if (targetSlot < rouletteOffset) targetSlot += total;
-
-                    rouletteOffset += (targetSlot - rouletteOffset) * 8 * dt;
-                    if (Math.abs(targetSlot - rouletteOffset) < 0.02) {
-                        rouletteOffset = targetSlot;
-                        rouletteState = 'DONE';
-                        selectedRouletteGame = ROULETTE_GAMES[rouletteTargetIndex];
-                        document.getElementById('party-status-text').textContent =
-                            `🎉 선택된 게임: ${selectedRouletteGame.icon} ${selectedRouletteGame.title}`;
-                        const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
-                        const spinBtn = document.getElementById('spin-roulette-btn');
-                        spinBtn.textContent = '룰렛 다시 돌리기 🎰';
-                        spinBtn.classList.toggle('hidden', !isHost);
-                    }
-                }
-                drawRouletteMonitor();
-            }
-        }
-        renderer.render(scene, camera);
-        return;
-    }
 
     if (portalRing) portalRing.rotation.z += 0.35 * dt;
     if (portalInnerRing) portalInnerRing.rotation.z -= 0.75 * dt;
