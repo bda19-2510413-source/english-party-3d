@@ -469,10 +469,54 @@ function handleLocalLobbyShove() {
 
 window.onRoomMembersUpdated = function() {
     updateMonitorCanvas();
+    renderPartyScoreboard();
     if (gamePhase !== 'LOBBY' && gamePhase !== 'MINIGAME_BOMB') {
         syncSofaCharacters();
     }
 };
+
+// ==========================================
+// 등수별 누적 점수(PT) 관리 & 파티 룸 순위판 렌더링
+// ==========================================
+window.awardMinigamePoints = function(awardedPointsMap) {
+    if (!window.currentRoomInfo) return;
+    const isHost = window.currentRoomInfo.role === 'HOST';
+
+    // 로컬 멤버 점수 즉시 업데이트
+    window.currentRoomInfo.members.forEach(m => {
+        const add = awardedPointsMap[m.id] || 0;
+        m.points = (m.points || 0) + add;
+    });
+
+    // 방장이면 Firebase DB에도 누적 점수 및 다음 라운드 번호 동기화
+    if (isHost && window.syncSaveRoundPoints) {
+        window.syncSaveRoundPoints(window.currentRoomInfo.code, window.currentRoomInfo.members);
+    }
+    renderPartyScoreboard();
+};
+
+window.getMemberTotalPoints = function(memberId) {
+    if (!window.currentRoomInfo) return 0;
+    const found = window.currentRoomInfo.members.find(m => m.id === memberId);
+    return found ? (found.points || 0) : 0;
+};
+
+function renderPartyScoreboard() {
+    const listEl = document.getElementById('party-scoreboard-list');
+    if (!listEl || !window.currentRoomInfo) return;
+    const sorted = [...window.currentRoomInfo.members].sort((a, b) => (b.points || 0) - (a.points || 0));
+    listEl.innerHTML = '';
+    sorted.forEach((m, idx) => {
+        const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}위`;
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between bg-white/80 rounded-xl px-2.5 py-1.5';
+        row.innerHTML = `
+            <span class="truncate max-w-[125px]">${medal} ${m.emoji || ''} ${m.name}</span>
+            <span class="font-black text-indigo-600">${m.points || 0} PT</span>
+        `;
+        listEl.appendChild(row);
+    });
+}
 
 function syncSofaCharacters() {
     const seatXPositions = [-2.4, -0.8, 0.8, 2.4, -3.1];
@@ -558,6 +602,8 @@ function startPartySequence() {
     document.getElementById('party-round-badge').textContent = `${roomCodeTxt}${curR} / ${totalR}판`;
 
     document.getElementById('party-room-hud').classList.remove('hidden');
+    document.getElementById('party-scoreboard-hud').classList.remove('hidden');
+    renderPartyScoreboard();
     document.getElementById('spin-roulette-btn').classList.add('hidden');
     document.getElementById('start-minigame-btn').classList.add('hidden');
     const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
@@ -613,6 +659,7 @@ function returnToLobby() {
     scene.fog = new THREE.Fog(0x87ceeb, 45, 135);
 
     document.getElementById('party-room-hud').classList.add('hidden');
+    document.getElementById('party-scoreboard-hud').classList.add('hidden');
     document.getElementById('open-selector-btn').classList.remove('hidden');
     if (window.currentRoomInfo) {
         document.getElementById('hud-room-code').textContent = `${window.currentRoomInfo.code} (${window.currentRoomInfo.totalRounds}판)`;
