@@ -26,6 +26,7 @@ let currentNearObject = null;
 let shoveEffects = [];
 let selectedTotalRounds = 5;
 window.currentRoomInfo = null;
+window.hasPlayedFirstRound = false;
 
 // 로비 다른 플레이어 3D 인스턴스 관리 맵
 const remoteLobbyPlayers = {};
@@ -320,6 +321,7 @@ async function createTeamAndEnterRoom() {
         currentRound: 1,
         members: [memberInfo]
     };
+    window.hasPlayedFirstRound = false;
     if (window.syncCreateRoom) {
         await window.syncCreateRoom(window.currentRoomInfo, memberInfo);
     }
@@ -353,15 +355,7 @@ async function submitJoinRoom() {
     };
 
     let joinedRounds = selectedTotalRounds;
-    if (window.syncJoinRoom) {
-        const res = await window.syncJoinRoom(code, memberInfo);
-        if (!res.ok) {
-            errEl.textContent = res.error || '방 입장에 실패했습니다.';
-            return;
-        }
-        joinedRounds = res.totalRounds;
-    }
-
+    window.hasPlayedFirstRound = false;
     window.currentRoomInfo = {
         code: code,
         role: 'GUEST',
@@ -369,6 +363,15 @@ async function submitJoinRoom() {
         currentRound: 1,
         members: [memberInfo]
     };
+    if (window.syncJoinRoom) {
+        const res = await window.syncJoinRoom(code, memberInfo);
+        if (!res.ok) {
+            window.currentRoomInfo = null;
+            errEl.textContent = res.error || '방 입장에 실패했습니다.';
+            return;
+        }
+        window.currentRoomInfo.totalRounds = res.totalRounds;
+    }
     updateMonitorCanvas();
     startPartySequence();
 }
@@ -609,7 +612,8 @@ function startPartySequence() {
     document.getElementById('spin-roulette-btn').classList.add('hidden');
     document.getElementById('start-minigame-btn').classList.add('hidden');
     const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
-    document.getElementById('return-lobby-btn').classList.toggle('hidden', !isHost);
+    // 한 번이라도 미니게임을 플레이한 후에는 로비로 돌아갈 수 없고 반드시 룰렛을 돌려야 함
+    document.getElementById('return-lobby-btn').classList.toggle('hidden', !isHost || window.hasPlayedFirstRound);
     document.getElementById('party-status-text').textContent = '🛋️ 소파로 걸어가 자리에 앉는 중...';
 
     camera.position.set(0, 4.2, 8.8);
