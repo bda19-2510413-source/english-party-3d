@@ -36,37 +36,6 @@ let phaseTimer = 0;
 let roomCharacterMap = {};
 let tvCanvas, tvCtx, tvTexture;
 
-// ==========================================
-// 미니게임 1: 폭탄 해체하기 상태 및 초·중등 영단어 풀
-// ==========================================
-window.isBombMinigameActive = false;
-let bombSubPhase = 'INTRO'; // 'INTRO' (3초 묶임 연출) | 'PLAY' (30초 타이핑) | 'RESULT' (1등 환호/폭발)
-let bombPhaseElapsed = 0;
-let bombStages = [];
-let bombScoreMap = {};
-let myBombScore = 0;
-let currentBombWordObj = null;
-
-const BOMB_WORD_BANK = [
-    { en: 'APPLE', ko: '사과' }, { en: 'BANANA', ko: '바나나' }, { en: 'TIGER', ko: '호랑이' },
-    { en: 'RABBIT', ko: '토끼' }, { en: 'SCHOOL', ko: '학교' }, { en: 'FRIEND', ko: '친구' },
-    { en: 'HAPPY', ko: '행복한' }, { en: 'WATER', ko: '물' }, { en: 'MUSIC', ko: '음악' },
-    { en: 'PLANET', ko: '행성' }, { en: 'ROCKET', ko: '로켓' }, { en: 'DRAGON', ko: '드래곤' },
-    { en: 'CASTLE', ko: '성' }, { en: 'FOREST', ko: '숲' }, { en: 'OCEAN', ko: '바다' },
-    { en: 'SUMMER', ko: '여름' }, { en: 'WINTER', ko: '겨울' }, { en: 'SPRING', ko: '봄' },
-    { en: 'AUTUMN', ko: '가을' }, { en: 'DOCTOR', ko: '의사' }, { en: 'PILOT', ko: '조종사' },
-    { en: 'ARTIST', ko: '예술가' }, { en: 'CAMERA', ko: '카메라' }, { en: 'GUITAR', ko: '기타' },
-    { en: 'SOCCER', ko: '축구' }, { en: 'TENNIS', ko: '테니스' }, { en: 'CHEESE', ko: '치즈' },
-    { en: 'COOKIE', ko: '쿠키' }, { en: 'ORANGE', ko: '오렌지' }, { en: 'PURPLE', ko: '보라색' },
-    { en: 'YELLOW', ko: '노란색' }, { en: 'SILVER', ko: '은색' }, { en: 'GOLDEN', ko: '황금빛의' },
-    { en: 'BRIDGE', ko: '다리' }, { en: 'ISLAND', ko: '섬' }, { en: 'DESERT', ko: '사막' },
-    { en: 'MONKEY', ko: '원숭이' }, { en: 'TURTLE', ko: '거북이' }, { en: 'DOLPHIN', ko: '돌고래' },
-    { en: 'PENGUIN', ko: '펭귄' }, { en: 'RAINBOW', ko: '무지개' }, { en: 'THUNDER', ko: '천둥' },
-    { en: 'SHADOW', ko: '그림자' }, { en: 'MIRROR', ko: '거울' }, { en: 'WINDOW', ko: '창문' },
-    { en: 'GARDEN', ko: '정원' }, { en: 'FLOWER', ko: '꽃' }, { en: 'BUTTERFLY', ko: '나비' },
-    { en: 'MOUNTAIN', ko: '산' }, { en: 'VICTORY', ko: '승리' }, { en: 'DEFUSE', ko: '해체하다' }
-];
-
 const ROULETTE_GAMES = [
     { id: 'BOMB_DEFUSAL', title: 'BOMB DEFUSAL', subtitle: '30초 폭탄 해체 영단어 타이핑!', color: '#ff4757', icon: '💣' },
     { id: 'SPEED_VOCAB', title: 'SPEED VOCAB QUIZ', subtitle: '제한시간 영단어 스피드 퀴즈!', color: '#3742fa', icon: '⚡' },
@@ -287,9 +256,14 @@ function confirmCharacterSelection() {
 
 function checkProximity() {
     if (!playerChameleon) return;
+    const promptEl = document.getElementById('interaction-prompt');
+    if (gamePhase !== 'LOBBY' || isSelectingCharacter) {
+        currentNearObject = null;
+        promptEl.classList.add('opacity-0', 'pointer-events-none');
+        return;
+    }
     const pPos = playerChameleon.group.position;
     const distToPortal = Math.hypot(pPos.x - 0, pPos.z - (-9));
-    const promptEl = document.getElementById('interaction-prompt');
 
     if (distToPortal < 4.3) {
         currentNearObject = 'PORTAL';
@@ -606,199 +580,13 @@ function triggerRouletteSpin() {
 
 function triggerStartSelectedMinigame() {
     if (window.currentRoomInfo && window.currentRoomInfo.role !== 'HOST') return;
-    if (window.syncStartBombMinigame && window.currentRoomInfo) {
-        window.syncStartBombMinigame(window.currentRoomInfo.code);
+    if (window.syncStartMinigame && window.currentRoomInfo) {
+        window.syncStartMinigame(window.currentRoomInfo.code, 'BOMB_DEFUSAL');
     }
-    window.enterBombDefusalMinigame();
-}
-
-window.enterBombDefusalMinigame = function() {
-    if (window.isBombMinigameActive) return;
-    window.isBombMinigameActive = true;
-    gamePhase = 'MINIGAME_BOMB';
-    bombSubPhase = 'INTRO';
-    bombPhaseElapsed = 0;
-    myBombScore = 0;
-    bombScoreMap = {};
-
-    if (!bombGameGroup) {
-        bombGameGroup = new THREE.Group();
-        scene.add(bombGameGroup);
-    }
-    while (bombGameGroup.children.length > 0) {
-        bombGameGroup.remove(bombGameGroup.children[0]);
-    }
-    bombStages = [];
-
-    const members = (window.currentRoomInfo && window.currentRoomInfo.members.length > 0)
-        ? window.currentRoomInfo.members
-        : [{ id: window.myPlayerId || 'local', name: getPlayerNickname(), charType: selectedCharType, colorHex: selectedColorHex, isHost: true }];
-
-    members.forEach((m, idx) => {
-        bombScoreMap[m.id] = 0;
-        const stage = createBombStageForMember(m, idx);
-        bombStages.push(stage);
-    });
-
-    partyRoomGroup.visible = false;
-    lobbyGroup.visible = false;
-    bombGameGroup.visible = true;
-    scene.background = new THREE.Color(0x141a2e);
-    scene.fog = new THREE.Fog(0x141a2e, 20, 65);
-
-    document.getElementById('party-room-hud').classList.add('hidden');
-    document.getElementById('bomb-game-overlay').classList.remove('hidden');
-    document.getElementById('bomb-typing-panel').classList.add('hidden');
-    document.getElementById('bomb-result-panel').classList.add('hidden');
-    document.getElementById('bomb-phase-banner').textContent = '🪢 밧줄에 묶였다! 30초 동안 영단어로 폭탄을 해체하라!';
-    document.getElementById('bomb-timer-text').textContent = '30.0';
-    document.getElementById('bomb-my-score').textContent = '0';
-
-    renderBombSplitLabels();
-    pickNextBombWord();
-};
-
-function renderBombSplitLabels() {
-    const container = document.getElementById('bomb-split-labels');
-    container.innerHTML = '';
-    const count = bombStages.length;
-    if (count === 0) return;
-
-    const cols = count === 1 ? 1 : 2;
-    const rows = Math.ceil(count / 2);
-
-    bombStages.forEach((st, idx) => {
-        const col = idx % cols;
-        const row = Math.floor(idx / cols);
-        const wPct = 100 / cols;
-        const hPct = 100 / rows;
-        const leftPct = col * wPct;
-        const topPct = row * hPct;
-
-        const isMe = st.member.id === (window.myPlayerId || 'local');
-        const cell = document.createElement('div');
-        cell.style.cssText = `position:absolute; left:${leftPct}%; top:${topPct}%; width:${wPct}%; height:${hPct}%; border: 3px solid ${isMe ? '#ffd32a' : 'rgba(255,255,255,0.28)'}; box-sizing:border-box;`;
-        cell.innerHTML = `
-            <div class="absolute top-16 left-3 glass-panel rounded-2xl px-3.5 py-1.5 flex items-center gap-2 shadow-lg">
-                <span class="font-black text-xs md:text-sm ${isMe ? 'text-indigo-600' : 'text-slate-800'}">${st.member.name}${isMe ? ' (나)' : ''}</span>
-                <span class="bg-rose-500 text-white font-black text-xs px-2.5 py-0.5 rounded-full">💣 <span id="bomb-cell-score-${st.member.id}">${st.score}</span>개</span>
-            </div>
-        `;
-        container.appendChild(cell);
-    });
-}
-
-function pickNextBombWord() {
-    const next = BOMB_WORD_BANK[Math.floor(Math.random() * BOMB_WORD_BANK.length)];
-    currentBombWordObj = next;
-    document.getElementById('bomb-word-meaning').textContent = `뜻: ${next.ko}`;
-    document.getElementById('bomb-target-word').textContent = next.en;
-    const inp = document.getElementById('bomb-word-input');
-    inp.value = '';
-}
-
-function onBombWordInput(val) {
-    if (bombSubPhase !== 'PLAY' || !currentBombWordObj) return;
-    const cleaned = val.trim().toUpperCase();
-    if (cleaned === currentBombWordObj.en) {
-        myBombScore += 1;
-        document.getElementById('bomb-my-score').textContent = String(myBombScore);
-        const myId = window.myPlayerId || 'local';
-        bombScoreMap[myId] = myBombScore;
-        const myStage = bombStages.find(s => s.member.id === myId);
-        if (myStage) {
-            myStage.score = myBombScore;
-            myStage.charObj.jump();
-        }
-        const badge = document.getElementById(`bomb-cell-score-${myId}`);
-        if (badge) badge.textContent = String(myBombScore);
-
-        if (window.syncUpdateBombScore && window.currentRoomInfo) {
-            window.syncUpdateBombScore(window.currentRoomInfo.code, myBombScore);
-        }
-        pickNextBombWord();
+    if (typeof window.enterBombDefusalMinigame === 'function') {
+        window.enterBombDefusalMinigame();
     }
 }
-
-window.onBombScoresUpdated = function(scoresObj) {
-    Object.entries(scoresObj).forEach(([pid, sc]) => {
-        bombScoreMap[pid] = sc;
-        const st = bombStages.find(s => s.member.id === pid);
-        if (st) {
-            if (sc > st.score && pid !== (window.myPlayerId || 'local')) {
-                st.charObj.jump();
-            }
-            st.score = sc;
-        }
-        const badge = document.getElementById(`bomb-cell-score-${pid}`);
-        if (badge) badge.textContent = String(sc);
-    });
-};
-
-function evaluateBombDefusalResults() {
-    bombSubPhase = 'RESULT';
-    bombPhaseElapsed = 0;
-    document.getElementById('bomb-typing-panel').classList.add('hidden');
-    document.getElementById('bomb-phase-banner').textContent = '💥 시간 종료! 1등만 탈출 성공!';
-
-    const sorted = [...bombStages].sort((a, b) => b.score - a.score);
-    const topScore = sorted[0] ? sorted[0].score : 0;
-
-    sorted.forEach((st, rankIdx) => {
-        if (rankIdx === 0 && (sorted.length === 1 || st.score >= topScore)) {
-            st.isWinner = true;
-            st.ropeGroup.visible = false;
-            st.bombGroup.visible = false;
-        } else {
-            st.isWinner = false;
-            st.exploded = true;
-            st.bombGroup.visible = false;
-            st.explosionMesh.visible = true;
-            st.charObj.setColor(0x2f3542);
-        }
-    });
-
-    const rankListEl = document.getElementById('bomb-ranking-list');
-    rankListEl.innerHTML = '';
-    sorted.forEach((st, idx) => {
-        const isFirst = st.isWinner;
-        const row = document.createElement('div');
-        row.className = `flex items-center justify-between px-4 py-2.5 rounded-2xl border-2 ${isFirst ? 'bg-amber-50 border-amber-400' : 'bg-slate-100 border-slate-200'}`;
-        row.innerHTML = `
-            <div class="flex items-center gap-2.5">
-                <span class="font-black text-base ${isFirst ? 'text-amber-600' : 'text-slate-500'}">${idx + 1}등</span>
-                <span class="font-black text-slate-800">${st.member.name}</span>
-                <span class="text-xs font-bold px-2 py-0.5 rounded-full ${isFirst ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}">
-                    ${isFirst ? '🎉 해체 탈출!' : '💥 폭탄 폭발!'}
-                </span>
-            </div>
-            <span class="font-black text-indigo-600">${st.score}개</span>
-        `;
-        rankListEl.appendChild(row);
-    });
-
-    const winnerName = sorted[0] ? sorted[0].member.name : '1등';
-    document.getElementById('bomb-winner-desc').textContent = `👑 ${winnerName}님이 가장 많은 폭탄을 해체해 탈출했습니다!`;
-    document.getElementById('bomb-result-panel').classList.remove('hidden');
-
-    const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
-    document.getElementById('bomb-next-round-btn').classList.toggle('hidden', !isHost);
-    document.getElementById('bomb-guest-next-wait').classList.toggle('hidden', isHost);
-}
-
-function finishBombMinigameToRoom() {
-    if (window.syncReturnToPartyRoom && window.currentRoomInfo) {
-        window.syncReturnToPartyRoom(window.currentRoomInfo.code);
-    }
-    window.exitBombMinigameToRoom();
-}
-
-window.exitBombMinigameToRoom = function() {
-    window.isBombMinigameActive = false;
-    document.getElementById('bomb-game-overlay').classList.add('hidden');
-    if (bombGameGroup) bombGameGroup.visible = false;
-    startPartySequence();
-};
 
 window.startRemoteRouletteSpin = function(targetIdx) {
     beginRouletteAnimation(targetIdx);
@@ -952,95 +740,9 @@ function animate() {
         }
     }
 
-    // ==========================================
-    // 미니게임 1: 폭탄 해체하기 애니메이션 & 분할 화면 렌더링
-    // ==========================================
-    if (gamePhase === 'MINIGAME_BOMB' && bombStages.length > 0) {
-        bombPhaseElapsed += dt;
-
-        if (bombSubPhase === 'INTRO') {
-            bombStages.forEach((st, idx) => {
-                st.charObj.bodyPivot.rotation.z = Math.sin(elapsed * 18 + idx) * 0.16;
-                st.charObj.headGroup.rotation.y = Math.sin(elapsed * 12 + idx) * 0.35;
-                st.bombLed.material.color.setHex(Math.sin(elapsed * 20) > 0 ? 0xff4757 : 0x550000);
-                st.spark.scale.setScalar(0.8 + Math.sin(elapsed * 30) * 0.4);
-            });
-            if (bombPhaseElapsed >= 3.0) {
-                bombSubPhase = 'PLAY';
-                bombPhaseElapsed = 0;
-                document.getElementById('bomb-phase-banner').textContent = '⌨️ 영단어를 입력해 폭탄을 해체하세요!';
-                document.getElementById('bomb-typing-panel').classList.remove('hidden');
-                setTimeout(() => document.getElementById('bomb-word-input').focus(), 40);
-            }
-        } else if (bombSubPhase === 'PLAY') {
-            const remaining = Math.max(0, 30.0 - bombPhaseElapsed);
-            document.getElementById('bomb-timer-text').textContent = remaining.toFixed(1);
-
-            const blinkSpeed = remaining < 7 ? 38 : 16;
-            bombStages.forEach((st, idx) => {
-                st.charObj.update(dt, new THREE.Vector3());
-                st.charObj.bodyPivot.rotation.z = Math.sin(elapsed * 14 + idx) * 0.1;
-                st.bombLed.material.color.setHex(Math.sin(elapsed * blinkSpeed) > 0 ? 0xff4757 : 0x440000);
-                st.spark.rotation.y += 6 * dt;
-                st.spark.scale.setScalar(0.9 + Math.sin(elapsed * 35) * 0.45);
-            });
-
-            if (remaining <= 0) {
-                evaluateBombDefusalResults();
-            }
-        } else if (bombSubPhase === 'RESULT') {
-            bombStages.forEach((st, idx) => {
-                if (st.isWinner) {
-                    st.charObj.bodyPivot.rotation.z = 0;
-                    st.charObj.group.position.y = Math.abs(Math.sin(elapsed * 7)) * 1.15;
-                    st.charObj.group.rotation.y = Math.sin(elapsed * 3.5) * 0.45;
-                    st.charObj.leftArm.rotation.z = 2.6;
-                    st.charObj.rightArm.rotation.z = -2.6;
-                } else {
-                    if (st.explosionMesh.visible) {
-                        const expT = Math.min(1, bombPhaseElapsed / 0.65);
-                        st.explosionMesh.scale.setScalar(1 + expT * 9.5);
-                        st.explosionMesh.material.opacity = Math.max(0, 1 - expT);
-                        if (expT >= 1) st.explosionMesh.visible = false;
-                    }
-                    st.charObj.group.rotation.y += 5.5 * dt;
-                    st.charObj.bodyPivot.rotation.z = Math.sin(elapsed * 16 + idx) * 0.28;
-                }
-            });
-        }
-
-        const W = window.innerWidth;
-        const H = window.innerHeight;
-        const count = bombStages.length;
-        const cols = count === 1 ? 1 : 2;
-        const rows = Math.ceil(count / 2);
-
-        renderer.setScissorTest(true);
-        bombStages.forEach((st, idx) => {
-            const col = idx % cols;
-            const row = Math.floor(idx / cols);
-            const vpW = Math.floor(W / cols);
-            const vpH = Math.floor(H / rows);
-            const vpX = col * vpW;
-            const vpY = H - (row + 1) * vpH;
-
-            renderer.setViewport(vpX, vpY, vpW, vpH);
-            renderer.setScissor(vpX, vpY, vpW, vpH);
-
-            camera.aspect = vpW / vpH;
-            camera.updateProjectionMatrix();
-
-            const camDistZ = bombSubPhase === 'INTRO' ? 3.6 : 4.5;
-            const camHeightY = bombSubPhase === 'INTRO' ? 1.85 : 2.15;
-            camera.position.set(st.baseX, camHeightY, camDistZ);
-            camera.lookAt(st.baseX + 0.1, 1.05, 0.25);
-
-            renderer.render(scene, camera);
-        });
-        renderer.setScissorTest(false);
-        renderer.setViewport(0, 0, W, H);
-        camera.aspect = W / H;
-        camera.updateProjectionMatrix();
+    // 미니게임 1: 폭탄 해체하기 독립 모듈 렌더링
+    if (gamePhase === 'MINIGAME_BOMB' && typeof window.updateAndRenderBombMinigame === 'function') {
+        window.updateAndRenderBombMinigame(dt, elapsed);
         return;
     }
 
