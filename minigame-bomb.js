@@ -218,7 +218,12 @@ function renderBombSplitLabels() {
 }
 
 function pickNextBombWord() {
-    const next = BOMB_WORD_BANK[Math.floor(Math.random() * BOMB_WORD_BANK.length)];
+    let next = BOMB_WORD_BANK[Math.floor(Math.random() * BOMB_WORD_BANK.length)];
+    if (currentBombWordObj && BOMB_WORD_BANK.length > 1) {
+        while (next.en === currentBombWordObj.en) {
+            next = BOMB_WORD_BANK[Math.floor(Math.random() * BOMB_WORD_BANK.length)];
+        }
+    }
     currentBombWordObj = next;
     document.getElementById('bomb-word-meaning').textContent = `뜻: ${next.ko}`;
     document.getElementById('bomb-target-word').textContent = next.en;
@@ -226,27 +231,38 @@ function pickNextBombWord() {
     inp.value = '';
 }
 
-function onBombWordInput(val) {
+function checkBombWordMatch(rawVal) {
     if (bombSubPhase !== 'PLAY' || !currentBombWordObj) return;
-    const cleaned = val.trim().toUpperCase();
+    const cleaned = (rawVal || '').replace(/\s+/g, '').toUpperCase();
     if (cleaned === currentBombWordObj.en) {
         myBombScore += 1;
         document.getElementById('bomb-my-score').textContent = String(myBombScore);
         const myId = window.myPlayerId || 'local';
         bombScoreMap[myId] = myBombScore;
-        const myStage = bombStages.find(s => s.member.id === myId);
+
+        // 내 스테이지 찾기 (ID 일치 또는 index 0 fallback)
+        const myStage = bombStages.find(s => s.member.id === myId) || bombStages[0];
         if (myStage) {
             myStage.score = myBombScore;
             myStage.charObj.jump();
+            const badge = document.getElementById(`bomb-cell-score-${myStage.member.id}`);
+            if (badge) badge.textContent = String(myBombScore);
         }
-        const badge = document.getElementById(`bomb-cell-score-${myId}`);
-        if (badge) badge.textContent = String(myBombScore);
 
         if (window.syncUpdateMinigameScore && window.currentRoomInfo) {
             window.syncUpdateMinigameScore(window.currentRoomInfo.code, myBombScore);
         }
         pickNextBombWord();
     }
+}
+
+function onBombWordInput(val) {
+    checkBombWordMatch(val);
+}
+
+function onBombWordKeyUp(e) {
+    const inp = document.getElementById('bomb-word-input');
+    if (inp) checkBombWordMatch(inp.value);
 }
 
 window.onBombScoresUpdated = function(scoresObj) {
@@ -273,7 +289,14 @@ function evaluateBombDefusalResults() {
     const sorted = [...bombStages].sort((a, b) => b.score - a.score);
     const topScore = sorted[0] ? sorted[0].score : 0;
 
+    // 등수별 포인트 테이블 (1등: 10점, 2등: 7점, 3등: 5점, 4등 이하: 3점)
+    const rankPointTable = [10, 7, 5, 3, 2];
+    const awardedPointsMap = {};
+
     sorted.forEach((st, rankIdx) => {
+        const earnedPt = rankPointTable[rankIdx] || 2;
+        awardedPointsMap[st.member.id] = earnedPt;
+
         if (rankIdx === 0 && (sorted.length === 1 || st.score >= topScore)) {
             st.isWinner = true;
             st.ropeGroup.visible = false;
@@ -287,21 +310,31 @@ function evaluateBombDefusalResults() {
         }
     });
 
+    // 누적 점수(PT) 반영 (방장이 서버/로컬 누적 점수 갱신)
+    if (typeof window.awardMinigamePoints === 'function') {
+        window.awardMinigamePoints(awardedPointsMap);
+    }
+
     const rankListEl = document.getElementById('bomb-ranking-list');
     rankListEl.innerHTML = '';
     sorted.forEach((st, idx) => {
         const isFirst = st.isWinner;
+        const earnedPt = awardedPointsMap[st.member.id] || 0;
+        const totalPt = (window.getMemberTotalPoints ? window.getMemberTotalPoints(st.member.id) : earnedPt);
         const row = document.createElement('div');
         row.className = `flex items-center justify-between px-4 py-2.5 rounded-2xl border-2 ${isFirst ? 'bg-amber-50 border-amber-400' : 'bg-slate-100 border-slate-200'}`;
         row.innerHTML = `
-            <div class="flex items-center gap-2.5">
+            <div class="flex items-center gap-2">
                 <span class="font-black text-base ${isFirst ? 'text-amber-600' : 'text-slate-500'}">${idx + 1}등</span>
                 <span class="font-black text-slate-800">${st.member.name}</span>
-                <span class="text-xs font-bold px-2 py-0.5 rounded-full ${isFirst ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}">
-                    ${isFirst ? '🎉 해체 탈출!' : '💥 폭탄 폭발!'}
+                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full ${isFirst ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}">
+                    ${isFirst ? '🎉 탈출!' : '💥 폭발!'}
                 </span>
             </div>
-            <span class="font-black text-indigo-600">${st.score}개</span>
+            <div class="text-right">
+                <div class="font-black text-indigo-600 text-sm">${st.score}개 <span class="text-emerald-600">(+${earnedPt} PT)</span></div>
+                <div class="text-[11px] font-bold text-slate-500">누적 ${totalPt} PT</div>
+            </div>
         `;
         rankListEl.appendChild(row);
     });
