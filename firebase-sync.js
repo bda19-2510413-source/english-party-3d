@@ -31,6 +31,17 @@ window.syncReturnToPartyRoom = async function(code) {
     });
 };
 
+window.syncSaveRoundPoints = async function(code, updatedMembers) {
+    if (!db || !code || !Array.isArray(updatedMembers)) return;
+    const updates = {};
+    updatedMembers.forEach(m => {
+        if (m.id) {
+            updates[`rooms/${code}/members/${m.id}/points`] = m.points || 0;
+        }
+    });
+    await update(ref(db), updates);
+};
+
 function subscribeRoom(code) {
     if (!db) return;
     const roomRef = ref(db, `rooms/${code}`);
