@@ -782,6 +782,11 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
             wallSubPhase = 'RUN';
             wallWaveTimer = 0;
         }
+    } else if (wallSubPhase === 'RUN') {
+        wallWaveTimer += dt;
+        const remainSec = Math.max(0, WALL_WAVE_DURATION - wallWaveTimer);
+        document.getElementById('wall-timer-text').textContent = remainSec.toFixed(1);
+
         // 벽이 z = -10.5 에서 z = +10.2 까지 전진 (초반은 천천히 눈치싸움, 후반부 급가속!)
         const progressRatio = Math.min(1, wallWaveTimer / WALL_WAVE_DURATION);
         // 초반 60% 구간은 완만하게 다가오고, 마지막 40% 구간에서 가속(ease-in)되어 빠르게 돌진!
