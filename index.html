@@ -26,11 +26,20 @@
         <span id="current-char-name">카멜레온</span>
     </button>
 
+    <!-- 로비 실시간 접속 인원 배지 (최대 30명) -->
+    <div id="lobby-population-hud" class="hidden fixed top-4 left-4 z-30 glass-panel rounded-2xl px-4 py-2 flex items-center gap-2 text-xs md:text-sm font-black text-slate-700">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span>로비 접속자 <span id="lobby-player-count" class="text-indigo-600">1</span> / 30명</span>
+    </div>
+
     <!-- 좌측 상단 방 코드 HUD -->
-    <div id="room-status-hud" class="hidden fixed top-4 left-4 z-30 glass-panel rounded-2xl px-4 py-2.5 flex items-center gap-3">
+    <div id="room-status-hud" class="hidden fixed top-16 left-4 z-30 glass-panel rounded-2xl px-4 py-2.5 flex items-center gap-3">
         <div>
-            <div class="text-[10px] font-black text-indigo-500">ROOM CODE</div>
-            <div id="hud-room-code" class="text-base font-black text-slate-800 tracking-wider">000000</div>
+            <div class="text-[10px] font-black text-indigo-500">ROOM CODE (최대 4명)</div>
+            <div class="flex items-center gap-1.5">
+                <div id="hud-room-code" class="text-base font-black text-slate-800 tracking-wider">000000</div>
+                <button type="button" onclick="copyRoomCodeToClipboard()" class="jelly-btn bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-[11px] font-black px-2 py-0.5 rounded-lg" title="방 번호 복사">📋 복사</button>
+            </div>
         </div>
         <button id="hud-start-game-btn" type="button" onclick="startPartySequence()" class="jelly-btn bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm px-4 py-2 rounded-xl shadow-md">
             게임 시작! 🎮
@@ -43,6 +52,7 @@
     <!-- 파티 룸(소파 & 모니터 룰렛) 진행 HUD -->
     <div id="party-room-hud" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 glass-panel rounded-full px-6 py-3 flex items-center gap-3 md:gap-4 shadow-2xl">
         <span id="party-round-badge" class="bg-indigo-600 text-white font-black text-xs px-3 py-1 rounded-full">1 / 5판</span>
+        <button id="copy-room-code-btn" type="button" onclick="copyRoomCodeToClipboard()" class="jelly-btn bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-black text-xs px-3 py-1 rounded-full">📋 코드 복사</button>
         <span id="party-status-text" class="font-black text-slate-800 text-sm md:text-base">🛋️ 소파에 자리 잡는 중...</span>
         <button id="spin-roulette-btn" type="button" onclick="triggerRouletteSpin()" class="hidden jelly-btn bg-amber-500 hover:bg-amber-400 text-white font-black text-xs md:text-sm px-5 py-2 rounded-full shadow-lg">
             룰렛 돌리기! 🎰
@@ -207,7 +217,7 @@
             <div id="portal-step-select">
                 <div class="text-5xl mb-2">🌀</div>
                 <h2 class="text-2xl font-black text-slate-800 mb-1">파티 포탈 입장</h2>
-                <p class="text-slate-500 text-sm mb-2">새로운 팀 방을 만들거나 방 번호로 참가하세요!</p>
+                <p class="text-slate-500 text-sm mb-2">한 팀당 최대 <strong>4명</strong>까지 함께 플레이할 수 있어요!</p>
                 <div class="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs px-3.5 py-1.5 rounded-full mb-4">
                     <span>참가자:</span>
                     <span id="portal-current-nickname" class="font-black">카멜레온</span>
@@ -240,9 +250,9 @@
             <div id="portal-step-join" class="hidden">
                 <div class="text-4xl mb-2">🔑</div>
                 <h2 class="text-xl font-black text-slate-800 mb-1">팀 방 참가하기</h2>
-                <p class="text-slate-500 text-xs mb-5">팀장이 알려준 6자리 방 번호를 입력하세요</p>
+                <p class="text-slate-500 text-xs mb-5">팀장이 알려준 6자리 방 번호를 입력하세요 (최대 4명)</p>
                 <div class="mb-4">
-                    <input id="join-room-code-input" type="text" inputmode="numeric" maxlength="6" placeholder="000000" class="w-full text-center text-3xl font-black tracking-[0.35em] px-4 py-3.5 rounded-2xl bg-white border-2 border-emerald-300 focus:border-emerald-500 focus:outline-none text-slate-800" />
+                    <input id="join-room-code-input" type="text" inputmode="numeric" maxlength="6" placeholder="000000" onkeydown="if(event.key==='Enter') submitJoinRoom()" class="w-full text-center text-3xl font-black tracking-[0.35em] px-4 py-3.5 rounded-2xl bg-white border-2 border-emerald-300 focus:border-emerald-500 focus:outline-none text-slate-800" />
                     <div id="join-error-msg" class="text-xs font-bold text-rose-500 mt-2 h-4"></div>
                 </div>
                 <div class="flex gap-2">
