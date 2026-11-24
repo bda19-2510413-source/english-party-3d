@@ -77,10 +77,11 @@ function setupEvents() {
         if (e.code === 'KeyS' || e.code === 'ArrowDown') keys.down = true;
         if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
         if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
-        if (e.code === 'Space' && gamePhase === 'LOBBY') {
+        if ((e.code === 'Space' || e.code === 'KeyE' || e.code === 'Enter') && gamePhase === 'LOBBY') {
+            if (!document.getElementById('custom-modal').classList.contains('hidden')) return;
             e.preventDefault();
             if (currentNearObject) triggerInteraction();
-            else if (playerChameleon) playerChameleon.jump();
+            else if (e.code === 'Space' && playerChameleon) playerChameleon.jump();
         }
     });
 
@@ -220,6 +221,10 @@ function openCharacterSelector() {
         showcasePedestal.position.set(playerChameleon.group.position.x, 0.04, playerChameleon.group.position.z);
         showcasePedestal.visible = true;
     }
+    // 캐릭터 선택 화면에서는 다른 플레이어가 겹쳐 보이지 않도록 일시 숨김
+    Object.values(remoteLobbyPlayers).forEach(r => {
+        if (r && r.char && r.char.group) r.char.group.visible = false;
+    });
     document.getElementById('character-select-overlay').classList.remove('hidden');
     document.getElementById('open-selector-btn').classList.add('hidden');
 }
@@ -228,7 +233,16 @@ function confirmCharacterSelection() {
     const charInfo = CHARACTER_TYPES[selectedCharIndex];
     const colorObj = JELLY_COLORS.find(c => c.hex === selectedColorHex);
     const finalNick = getPlayerNickname();
-    if (playerChameleon) playerChameleon.setNickname(finalNick);
+    if (playerChameleon) {
+        playerChameleon.setNickname(finalNick);
+        // 처음 입장 시 30명이 한 점에 겹치지 않도록 광장 원형 반경 내 랜덤 위치로 분산 배치
+        if (!window.hasEnteredLobbyOnce) {
+            window.hasEnteredLobbyOnce = true;
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 1.2 + Math.random() * 2.4;
+            playerChameleon.group.position.set(Math.cos(angle) * radius, 0, 6 + Math.sin(angle) * radius);
+        }
+    }
     document.getElementById('current-char-emoji').textContent = charInfo.emoji;
     document.getElementById('current-char-name').textContent = finalNick;
     if (colorObj) document.getElementById('current-char-color-dot').style.backgroundColor = colorObj.css;
@@ -237,7 +251,13 @@ function confirmCharacterSelection() {
     if (showcasePedestal) showcasePedestal.visible = false;
     document.getElementById('character-select-overlay').classList.add('hidden');
     document.getElementById('open-selector-btn').classList.remove('hidden');
+    document.getElementById('lobby-population-hud').classList.remove('hidden');
     cameraAngle = 0;
+
+    // 숨겨두었던 로비 다른 플레이어들 다시 표시
+    Object.values(remoteLobbyPlayers).forEach(r => {
+        if (r && r.char && r.char.group) r.char.group.visible = true;
+    });
 
     if (playerChameleon) {
         const joinPayload = {
@@ -254,6 +274,20 @@ function confirmCharacterSelection() {
         } else {
             window.pendingLobbyJoin = joinPayload;
         }
+    }
+}
+
+function copyRoomCodeToClipboard() {
+    if (!window.currentRoomInfo || !window.currentRoomInfo.code) return;
+    const code = window.currentRoomInfo.code;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).catch(() => {});
+    }
+    const copyBtn = document.getElementById('copy-room-code-btn');
+    if (copyBtn) {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = '✅ 복사됨!';
+        setTimeout(() => { copyBtn.textContent = orig; }, 1400);
     }
 }
 
@@ -386,10 +420,17 @@ window.onLobbyPlayersUpdated = function(allPlayers, myId) {
     const now = Date.now();
     const activeIds = new Set();
 
-    Object.entries(allPlayers).forEach(([pid, pData]) => {
-        if (pid === myId) return;
-        if (!pData || pData.inLobby === false) return;
-        if (pData.updatedAt && now - pData.updatedAt > 60000) return;
+    // 로비 접속자 최대 30명까지 정렬 및 필터링
+    const validEntries = Object.entries(allPlayers)
+        .filter(([pid, pData]) => pid !== myId && pData && pData.inLobby !== false && (!pData.updatedAt || now - pData.updatedAt <= 90000))
+        .slice(0, 29);
+
+    const countEl = document.getElementById('lobby-player-count');
+    if (countEl) {
+        countEl.textContent = String(Math.min(30, validEntries.length + (isSelectingCharacter ? 0 : 1)));
+    }
+
+    validEntries.forEach(([pid, pData]) => {
         activeIds.add(pid);
 
         let remote = remoteLobbyPlayers[pid];
@@ -402,6 +443,8 @@ window.onLobbyPlayersUpdated = function(allPlayers, myId) {
                 pData.name || '친구',
                 lobbyGroup
             );
+            // 캐릭터 선택 화면 중이면 겹치지 않도록 숨김 유지
+            charObj.group.visible = !isSelectingCharacter;
             remote = {
                 char: charObj,
                 targetPos: new THREE.Vector3(pData.x || 0, pData.y || 0, pData.z || 6),
@@ -410,6 +453,7 @@ window.onLobbyPlayersUpdated = function(allPlayers, myId) {
             };
             remoteLobbyPlayers[pid] = remote;
         } else {
+            remote.char.group.visible = !isSelectingCharacter;
             if (remote.char.type !== pData.charType) {
                 remote.char.setAppearance(pData.charType, pData.colorHex);
             } else if (remote.char.colorHex !== pData.colorHex) {
@@ -548,9 +592,10 @@ function renderPartyScoreboard() {
 }
 
 function syncSofaCharacters() {
-    const seatXPositions = [-2.4, -0.8, 0.8, 2.4, -3.1];
+    // 한 팀 최대 4명 소파 착석 위치
+    const seatXPositions = [-2.55, -0.85, 0.85, 2.55];
     const members = (window.currentRoomInfo && window.currentRoomInfo.members.length > 0)
-        ? window.currentRoomInfo.members
+        ? window.currentRoomInfo.members.slice(0, 4)
         : [{ id: window.myPlayerId || 'local', name: getPlayerNickname(), charType: selectedCharType, colorHex: selectedColorHex, isHost: true }];
 
     const activeMemberIds = new Set();
@@ -594,6 +639,7 @@ function startPartySequence() {
     document.getElementById('character-select-overlay').classList.add('hidden');
     document.getElementById('interaction-prompt').classList.add('opacity-0', 'pointer-events-none');
     document.getElementById('open-selector-btn').classList.add('hidden');
+    document.getElementById('lobby-population-hud').classList.add('hidden');
     document.getElementById('room-status-hud').classList.add('hidden');
 
     if (window.syncUpdateLobbyState && playerChameleon) {
@@ -709,6 +755,7 @@ function returnToLobby() {
     document.getElementById('party-room-hud').classList.add('hidden');
     document.getElementById('party-scoreboard-hud').classList.add('hidden');
     document.getElementById('open-selector-btn').classList.remove('hidden');
+    document.getElementById('lobby-population-hud').classList.remove('hidden');
     if (window.currentRoomInfo) {
         document.getElementById('hud-room-code').textContent = `${window.currentRoomInfo.code} (${window.currentRoomInfo.totalRounds}판)`;
         document.getElementById('room-status-hud').classList.remove('hidden');
@@ -979,7 +1026,7 @@ function animate() {
 }
 
 window.onload = function () {
-    console.log("5");
+    console.log("6");
     initScene();
     initCharacterSelectorUI();
     setupEvents();
