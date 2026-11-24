@@ -116,6 +116,47 @@
         </div>
     </div>
 
+    <!-- ========================================== -->
+    <!-- 미니게임 2: 영어 문법 벽 돌파 (공통 단일 화면) HUD -->
+    <!-- ========================================== -->
+    <div id="wall-game-overlay" class="hidden fixed inset-0 z-50 pointer-events-none flex flex-col justify-between">
+        <div class="relative z-20 flex flex-col items-center pt-3 px-4 gap-2">
+            <div class="glass-panel rounded-full px-6 py-2 flex items-center gap-4 shadow-xl border-2 border-indigo-400">
+                <span class="text-2xl">🧱</span>
+                <span id="wall-phase-banner" class="font-black text-slate-800 text-sm md:text-base">정답 벽 앞으로 이동하세요!</span>
+                <div class="bg-indigo-600 text-white font-black text-lg px-4 py-0.5 rounded-full min-w-[74px] text-center">
+                    <span id="wall-timer-text">10.0</span>s
+                </div>
+            </div>
+            <!-- 상단 문법 문제 요약 & 좌/우 선택지 카드 -->
+            <div class="glass-panel rounded-2xl px-5 py-2.5 text-center shadow-lg max-w-xl w-full">
+                <div id="wall-question-text" class="font-black text-slate-900 text-base md:text-lg mb-1">Q1. She ___ to school.</div>
+                <div class="flex items-center justify-between gap-3 text-sm font-black">
+                    <span id="wall-left-label" class="flex-1 bg-blue-600 text-white py-1 px-3 rounded-xl">◀ go</span>
+                    <span id="wall-right-label" class="flex-1 bg-rose-500 text-white py-1 px-3 rounded-xl">goes ▶</span>
+                </div>
+            </div>
+            <!-- 생존자 배지 목록 -->
+            <div id="wall-alive-list" class="flex flex-wrap justify-center gap-1.5"></div>
+        </div>
+
+        <!-- 결과 순위표 모달 -->
+        <div id="wall-result-panel" class="hidden relative z-30 m-auto w-full max-w-md px-4 pointer-events-auto">
+            <div class="glass-panel rounded-3xl p-6 text-center border-4 border-indigo-400 shadow-2xl">
+                <div class="text-4xl mb-1">🏆</div>
+                <h2 class="text-2xl font-black text-slate-800 mb-1">문법 벽 돌파 결과!</h2>
+                <p id="wall-winner-desc" class="text-sm font-bold text-emerald-600 mb-4">끝까지 살아남은 승자!</p>
+                <div id="wall-ranking-list" class="space-y-2 mb-5 text-left"></div>
+                <button id="wall-next-round-btn" type="button" onclick="finishWallMinigameToRoom()" class="hidden w-full jelly-btn bg-indigo-600 hover:bg-indigo-500 text-white font-black py-3 rounded-2xl shadow-lg">
+                    파티 룸으로 돌아가기 🛋️
+                </button>
+                <div id="wall-guest-next-wait" class="hidden text-xs font-bold text-slate-500 py-2">
+                    방장이 다음 라운드로 이동할 때까지 대기 중... ⏳
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 3D 캐릭터 쇼케이스 선택 화면 -->
     <div id="character-select-overlay" class="fixed inset-0 z-40 flex flex-col justify-between p-4 md:p-8 pointer-events-none">
         <div class="flex flex-col items-center mt-2 pointer-events-auto">
@@ -213,10 +254,11 @@
     </div>
 
     <!-- 모듈 스크립트 로드 -->
-    <script src="character.js?v=7"></script>
-    <script src="world.js?v=7"></script>
-    <script type="module" src="firebase-sync.js?v=7"></script>
-    <script src="minigame-bomb.js?v=7"></script>
-    <script src="main.js?v=7"></script>
+    <script src="character.js?v=8"></script>
+    <script src="world.js?v=8"></script>
+    <script type="module" src="firebase-sync.js?v=8"></script>
+    <script src="minigame-bomb.js?v=8"></script>
+    <script src="minigame-wall.js?v=8"></script>
+    <script src="main.js?v=8"></script>
 </body>
 </html>
