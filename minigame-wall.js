@@ -692,18 +692,18 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         }
     }
 
-    // 1. 내 캐릭터 이동 (오답 벽에 밀리는 중이 아닐 때 자유 이동)
-    if (me && me.alive && !me.beingPushedByWall && wallSubPhase === 'RUN') {
+    // 1. 내 캐릭터 이동 (오답 벽에 밀리는 중에도 좌우로 도망쳐 정답 구역으로 빠져나갈 수 있음!)
+    if (me && me.alive && !me.isFalling && wallSubPhase === 'RUN') {
         let moveX = 0, moveZ = 0;
         if (keys.left) moveX -= 1;
         if (keys.right) moveX += 1;
-        if (keys.up) moveZ -= 1;
+        if (keys.up && !me.beingPushedByWall) moveZ -= 1;
         if (keys.down) moveZ += 1;
 
         if (moveX !== 0 || moveZ !== 0) {
             const len = Math.hypot(moveX, moveZ);
             me.vx = (moveX / len) * 6.8;
-            me.vz = (moveZ / len) * 6.8;
+            me.vz = me.beingPushedByWall ? 0 : (moveZ / len) * 6.8;
             me.char.group.rotation.y = Math.atan2(me.vx, me.vz);
         } else {
             me.vx *= 0.8;
@@ -711,7 +711,9 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         }
 
         me.x = Math.max(-5.3, Math.min(5.3, me.x + me.vx * dt));
-        me.z = Math.max(-0.5, Math.min(8.2, me.z + me.vz * dt));
+        if (!me.beingPushedByWall) {
+            me.z = Math.max(-0.5, Math.min(8.2, me.z + me.vz * dt));
+        }
         me.char.group.position.set(me.x, 0, me.z);
 
         if (me.char.isShoving) {
@@ -721,7 +723,7 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
             me.char.bodyPivot.position.y = bounce * 0.14;
             me.char.leftLeg.position.z = Math.sin(elapsed * 14) * 0.2;
             me.char.rightLeg.position.z = -Math.sin(elapsed * 14) * 0.2;
-        } else {
+        } else if (!me.beingPushedByWall) {
             me.char.bodyPivot.position.y = Math.sin(elapsed * 3) * 0.03;
         }
 
@@ -733,10 +735,12 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
 
     // 2. 원격 플레이어 보간
     Object.entries(wallPlayers).forEach(([pid, p]) => {
-        if (pid !== myId && p.alive && !p.beingPushedByWall) {
+        if (pid !== myId && p.alive && !p.isFalling) {
             const prevX = p.x, prevZ = p.z;
             p.x += (p.targetX - p.x) * 10 * dt;
-            p.z += (p.targetZ - p.z) * 10 * dt;
+            if (!p.beingPushedByWall) {
+                p.z += (p.targetZ - p.z) * 10 * dt;
+            }
             p.char.group.position.set(p.x, 0, p.z);
             const moved = Math.hypot(p.x - prevX, p.z - prevZ);
             if (p.char.isShoving) {
@@ -775,10 +779,17 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         Object.values(wallPlayers).forEach(p => {
             if (!p.alive) return;
             const onLeftSide = p.x < 0;
+            const inCorrectZone = (onLeftSide && isLeftCorrect) || (!onLeftSide && !isLeftCorrect);
 
-            // 벽 앞면이 플레이어 위치(p.z)에 도달했을 때!
-            if (wallFrontZ >= p.z && currentWallZ - 0.5 <= p.z + 0.6) {
-                if ((onLeftSide && isLeftCorrect) || (!onLeftSide && !isLeftCorrect)) {
+            // 매 프레임 밀림 상태를 재평가하여 옆으로 도망쳐 정답 구역에 들어가면 즉시 해제!
+            p.beingPushedByWall = false;
+            if (!p.isFalling) {
+                p.char.bodyPivot.rotation.x = 0;
+            }
+
+            // 벽 앞면이 플레이어 위치(p.z)에 닿아 있을 때만 판정!
+            if (!p.isFalling && wallFrontZ >= p.z && currentWallZ - 0.55 <= p.z + 0.5) {
+                if (inCorrectZone) {
                     // 정답 벽: 벽이 파편으로 산산조각 부서지며 플레이어는 그대로 통과!
                     if (onLeftSide && !leftWallShattered) {
                         leftWallShattered = true;
@@ -790,35 +801,35 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
                         spawnWallDestructionFragments(2.95, currentWallZ, 0xff4757);
                     }
                 } else {
-                    // 오답 벽: 튕겨 날아가는 게 아니라 벽 앞면에 밀착되어 뒤(+Z)로 쭉 밀려남!
+                    // 오답 벽: 벽 앞면에 닿아 있는 동안만 뒤(+Z)로 밀려남 (옆으로 피하면 탈출 가능!)
                     p.beingPushedByWall = true;
                     p.z = wallFrontZ;
                     p.char.group.position.z = p.z;
-                    p.char.bodyPivot.rotation.x = -0.25; // 벽에 밀려 버둥거리는 자세
+                    p.char.bodyPivot.rotation.x = -0.25;
                     p.char.leftLeg.position.z = Math.sin(elapsed * 26) * 0.25;
                     p.char.rightLeg.position.z = -Math.sin(elapsed * 26) * 0.25;
                 }
             }
 
-            // 트랙 뒤쪽 끝(z > 9.0)까지 밀려나면 낭떠러지로 추락 탈락!
+            // 트랙 뒤쪽 끝(z > 9.0)까지 밀려 떨어져야만 최종 탈락!
             if (p.z > 9.0 && !p.isFalling) {
                 p.isFalling = true;
+                p.beingPushedByWall = false;
             }
             if (p.isFalling) {
-                p.z += wallSpeed * 0.6 * dt;
+                p.z += wallSpeed * 0.55 * dt;
                 p.fallVy -= 26 * dt;
                 p.char.group.position.y += p.fallVy * dt;
                 p.char.group.position.z = p.z;
                 if (p.char.group.position.y < -12) {
                     p.alive = false;
-                    p.beingPushedByWall = false;
                     p.char.group.visible = false;
                     renderWallAliveBadges();
                 }
             }
         });
 
-        // 벽이 플레이어 라인(z = 4.5)을 지나갈 때 정답 공개 & 생존자 돌파 횟수 +1
+        // 벽이 플레이어 라인(z = 4.5)을 지나갈 때 정답 공개 & 살아남은 플레이어 돌파 횟수 +1
         if (!wallPassCheckedThisWave && currentWallZ > 4.5) {
             wallPassCheckedThisWave = true;
             const qData = GRAMMAR_QUESTIONS[wallQuestionOrder[wallQuestionIndex]];
