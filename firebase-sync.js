@@ -155,7 +155,9 @@ window.syncStartMinigame = async function(code, gameType = 'BOMB_DEFUSAL') {
             type: gameType,
             startId: startId,
             startedAt: startId,
-            scores: {}
+            seed: Math.floor(Math.random() * 100000),
+            scores: {},
+            players: {}
         }
     });
 };
@@ -164,6 +166,14 @@ window.syncUpdateMinigameScore = function(code, score) {
     if (!db || !code) return;
     update(ref(db, `rooms/${code}/minigameState/scores`), {
         [myPlayerId]: score
+    });
+};
+
+window.syncWallPlayerState = function(code, stateObj) {
+    if (!db || !code) return;
+    update(ref(db, `rooms/${code}/minigameState/players/${myPlayerId}`), {
+        ...stateObj,
+        updatedAt: Date.now()
     });
 };
 
@@ -225,9 +235,23 @@ function subscribeRoom(code) {
             if (mg.scores && typeof window.onBombScoresUpdated === 'function') {
                 window.onBombScoresUpdated(mg.scores);
             }
-        } else if (!data.minigameState && window.isBombMinigameActive) {
-            if (typeof window.exitBombMinigameToRoom === 'function') {
+        } else if (data.minigameState && data.minigameState.type === 'GRAMMAR_WALL') {
+            const mg = data.minigameState;
+            if (mg.startId && mg.startId !== lastHandledMinigameStartId) {
+                lastHandledMinigameStartId = mg.startId;
+                if (typeof window.enterGrammarWallMinigame === 'function') {
+                    window.enterGrammarWallMinigame(mg.seed || mg.startedAt);
+                }
+            }
+            if (mg.players && typeof window.onWallPlayersUpdated === 'function') {
+                window.onWallPlayersUpdated(mg.players);
+            }
+        } else if (!data.minigameState) {
+            if (window.isBombMinigameActive && typeof window.exitBombMinigameToRoom === 'function') {
                 window.exitBombMinigameToRoom();
+            }
+            if (window.isWallMinigameActive && typeof window.exitWallMinigameToRoom === 'function') {
+                window.exitWallMinigameToRoom();
             }
         }
     });
