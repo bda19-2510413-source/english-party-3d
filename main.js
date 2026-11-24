@@ -624,9 +624,9 @@ function startPartySequence() {
 
 function triggerRouletteSpin() {
     if (window.currentRoomInfo && window.currentRoomInfo.role !== 'HOST') return;
-    // 1라운드(첫 게임)는 폭탄 해체(0), 2라운드 이후는 문법 벽 돌파(1) 또는 랜덤 선택!
-    const curR = window.currentRoomInfo ? (window.currentRoomInfo.currentRound || 1) : 1;
-    const targetIdx = curR === 1 ? 0 : (curR === 2 ? 1 : Math.floor(Math.random() * 2));
+    // 구현 완료된 미니게임(0: 폭탄 해체하기, 1: 문법 벽 돌파) 중 매 라운드 완전 랜덤 추첨!
+    const implementedGameIndices = [0, 1];
+    const targetIdx = implementedGameIndices[Math.floor(Math.random() * implementedGameIndices.length)];
     beginRouletteAnimation(targetIdx);
 
     if (window.syncSpinRoulette && window.currentRoomInfo) {
@@ -813,7 +813,12 @@ function animate() {
         window.updateAndRenderWallMinigame(dt, elapsed);
         return;
     }
-        }
+
+    Object.values(remoteLobbyPlayers).forEach((remote) => {
+        const g = remote.char.group;
+        const prevX = g.position.x;
+        const prevZ = g.position.z;
+        g.position.lerp(remote.targetPos, 10 * dt);
 
         let diff = remote.targetRotY - g.rotation.y;
         while (diff < -Math.PI) diff += Math.PI * 2;
