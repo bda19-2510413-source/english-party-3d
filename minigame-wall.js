@@ -5,6 +5,36 @@
 // ==========================================
 window.isWallMinigameActive = false;
 
+// 3D 캐릭터 밀치기 팔 뻗기 애니메이션 헬퍼
+function animateWallCharShove(charObj, dt) {
+    if (!charObj || !charObj.isShoving) return;
+    charObj.shoveTimer -= dt;
+    const progress = 1 - Math.max(0, charObj.shoveTimer / 0.34);
+    const punchCurve = Math.sin(progress * Math.PI);
+    charObj.bodyPivot.rotation.x = punchCurve * 0.42;
+    charObj.bodyPivot.position.z = punchCurve * 0.24;
+    charObj.leftArm.rotation.x = -punchCurve * 1.45;
+    charObj.rightArm.rotation.x = -punchCurve * 1.45;
+    charObj.leftArm.rotation.z = 0.4 - punchCurve * 0.35;
+    charObj.rightArm.rotation.z = -0.4 + punchCurve * 0.35;
+    charObj.leftArm.position.z = 0.05 + punchCurve * 0.38;
+    charObj.rightArm.position.z = 0.05 + punchCurve * 0.38;
+    charObj.bodyPivot.scale.set(1 - punchCurve * 0.12, 1 - punchCurve * 0.08, 1 + punchCurve * 0.22);
+
+    if (charObj.shoveTimer <= 0) {
+        charObj.isShoving = false;
+        charObj.bodyPivot.rotation.x = 0;
+        charObj.bodyPivot.position.z = 0;
+        charObj.leftArm.rotation.x = 0;
+        charObj.rightArm.rotation.x = 0;
+        charObj.leftArm.rotation.z = 0.4;
+        charObj.rightArm.rotation.z = -0.4;
+        charObj.leftArm.position.z = 0.05;
+        charObj.rightArm.position.z = 0.05;
+        charObj.bodyPivot.scale.set(1, 1, 1);
+    }
+}
+
 let wallGameGroup = null;
 let wallSubPhase = 'INTRO'; // 'INTRO' (2초 시작 안내) | 'RUN' (연속 벽 전진 플레이) | 'RESULT' (최종 순위)
 let wallPhaseTimer = 0;
@@ -502,6 +532,8 @@ window.handleWallLocalShove = function() {
 
     const fwdX = Math.sin(me.char.group.rotation.y);
     const fwdZ = Math.cos(me.char.group.rotation.y);
+    me.vx += fwdX * 4.5;
+    me.vz += fwdZ * 4.5;
     let hitTargetId = '';
     let pushVx = 0, pushVz = 0;
 
@@ -682,7 +714,9 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         me.z = Math.max(-0.5, Math.min(8.2, me.z + me.vz * dt));
         me.char.group.position.set(me.x, 0, me.z);
 
-        if (Math.hypot(me.vx, me.vz) > 0.3) {
+        if (me.char.isShoving) {
+            animateWallCharShove(me.char, dt);
+        } else if (Math.hypot(me.vx, me.vz) > 0.3) {
             const bounce = Math.abs(Math.sin(elapsed * 14));
             me.char.bodyPivot.position.y = bounce * 0.14;
             me.char.leftLeg.position.z = Math.sin(elapsed * 14) * 0.2;
@@ -705,7 +739,9 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
             p.z += (p.targetZ - p.z) * 10 * dt;
             p.char.group.position.set(p.x, 0, p.z);
             const moved = Math.hypot(p.x - prevX, p.z - prevZ);
-            if (moved > 0.01) {
+            if (p.char.isShoving) {
+                animateWallCharShove(p.char, dt);
+            } else if (moved > 0.01) {
                 p.char.group.rotation.y = Math.atan2(p.x - prevX, p.z - prevZ);
                 p.char.bodyPivot.position.y = Math.abs(Math.sin(elapsed * 14)) * 0.14;
             }
