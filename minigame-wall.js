@@ -1,24 +1,32 @@
 // ==========================================
 // 미니게임 2: 영어 문법 벽 돌파 (GRAMMAR WALL) 독립 모듈
-// - 분할 화면 없이 파티원 전원이 하나의 3D 트랙에서 경쟁
-// - 정답 벽은 파편으로 산산조각 나며 통과, 오답 벽은 뒤로 밀려 추락 탈락!
+// - 끊김 없는 연속 벽 전진 웨이브 + 오답 벽에 밀려 뒤로 밀려나는 물리 연출
+// - 바다, 하늘 섬, 구름, 응원 깃발 기둥 등 풍부한 3D 배경 포함
 // ==========================================
 window.isWallMinigameActive = false;
 
 let wallGameGroup = null;
-let wallSubPhase = 'INTRO'; // 'INTRO' (3초 안내) | 'CHOOSE' (10초 이동/밀치기) | 'IMPACT' (벽 충돌/파괴 연출) | 'RESULT' (최종 순위)
+let wallSubPhase = 'INTRO'; // 'INTRO' (2초 시작 안내) | 'RUN' (연속 벽 전진 플레이) | 'RESULT' (최종 순위)
 let wallPhaseTimer = 0;
+let wallWaveTimer = 0;
+const WALL_WAVE_DURATION = 6.5; // 한 문제당 벽이 다가와 통과하는 총 시간(초)
+
 let wallQuestionIndex = 0;
 let wallQuestionOrder = [];
-let wallPlayers = {}; // { [playerId]: { member, char, x, z, vx, vz, alive, eliminatedRound, rank, isFalling, fallVy } }
+let wallPlayers = {};
 let wallMonitorCanvas = null, wallMonitorCtx = null, wallMonitorTexture = null;
 let leftWallMesh = null, rightWallMesh = null;
 let leftWallCanvas = null, leftWallCtx = null, leftWallTex = null;
 let rightWallCanvas = null, rightWallCtx = null, rightWallTex = null;
+
 let wallFragments = [];
 let wallShoveWaves = [];
+let wallSceneryProps = []; // 뒤로 스쳐 지나가는 기둥/구름/속도선
 let lastWallPosSync = 0;
-let wallRoundAnswerSide = 'LEFT'; // 'LEFT' | 'RIGHT'
+let wallRoundAnswerSide = 'LEFT';
+let wallPassCheckedThisWave = false;
+let leftWallShattered = false;
+let rightWallShattered = false;
 
 const GRAMMAR_QUESTIONS = [
     { q: 'She ___ to school every day.', left: 'go', right: 'goes', ans: 'RIGHT', exp: '3인칭 단수(She) 현재형은 goes!' },
@@ -48,48 +56,168 @@ function buildWallMinigameStage() {
     }
     wallFragments = [];
     wallShoveWaves = [];
+    wallSceneryProps = [];
 
-    // 1. 공중 트랙(다리) 바닥: 가로 폭 12 (-6 ~ +6), 세로 길이 18 (-9 ~ +9)
-    const trackGeo = new THREE.BoxGeometry(12, 0.8, 18);
-    const trackMat = new THREE.MeshStandardMaterial({ color: 0xf1f2f6, roughness: 0.55 });
+    // 1. 아래쪽 에메랄드 바다 & 반짝이는 물결 원판
+    const seaMesh = new THREE.Mesh(
+        new THREE.CircleGeometry(140, 48),
+        new THREE.MeshStandardMaterial({ color: 0x1e90ff, roughness: 0.35, metalness: 0.1 })
+    );
+    seaMesh.rotation.x = -Math.PI / 2;
+    seaMesh.position.set(0, -14, -10);
+    wallGameGroup.add(seaMesh);
+
+    const seaFoamRing = new THREE.Mesh(
+        new THREE.RingGeometry(18, 22, 48),
+        new THREE.MeshBasicMaterial({ color: 0x70a1ff, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+    );
+    seaFoamRing.rotation.x = -Math.PI / 2;
+    seaFoamRing.position.set(0, -13.9, 0);
+    wallGameGroup.add(seaFoamRing);
+
+    // 2. 좌우 원경 하늘 섬(Floating Islands) & 파스텔 나무 장식
+    const islandConfigs = [
+        { x: -17, y: -2.5, z: -12, r: 5.2, treeColor: 0x2ed573 },
+        { x: 18,  y: -1.8, z: -15, r: 5.8, treeColor: 0xffa502 },
+        { x: -15, y: -3.2, z: 4,   r: 4.2, treeColor: 0xff6b81 },
+        { x: 16,  y: -2.8, z: 3,   r: 4.5, treeColor: 0x2ed573 },
+        { x: -24, y: 1.5,  z: -32, r: 8.5, treeColor: 0x7bed9f },
+        { x: 25,  y: 2.0,  z: -34, r: 9.0, treeColor: 0x70a1ff }
+    ];
+    islandConfigs.forEach(isl => {
+        const islGroup = new THREE.Group();
+        islGroup.position.set(isl.x, isl.y, isl.z);
+
+        const rockCone = new THREE.Mesh(
+            new THREE.ConeGeometry(isl.r, isl.r * 1.4, 7),
+            new THREE.MeshStandardMaterial({ color: 0xcd6133, roughness: 0.85, flatShading: true })
+        );
+        rockCone.rotation.x = Math.PI;
+        rockCone.position.y = -isl.r * 0.7;
+
+        const grassTop = new THREE.Mesh(
+            new THREE.CylinderGeometry(isl.r * 1.02, isl.r, 0.7, 12),
+            new THREE.MeshStandardMaterial({ color: 0x7bed9f, roughness: 0.75 })
+        );
+
+        const trunk = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.28, 0.38, 1.8, 8),
+            new THREE.MeshStandardMaterial({ color: 0x845422 })
+        );
+        trunk.position.set(0, 1.1, 0);
+
+        const crown = new THREE.Mesh(
+            new THREE.DodecahedronGeometry(1.4, 1),
+            new THREE.MeshStandardMaterial({ color: isl.treeColor, roughness: 0.5 })
+        );
+        crown.position.set(0, 2.7, 0);
+
+        islGroup.add(rockCone, grassTop, trunk, crown);
+        wallGameGroup.add(islGroup);
+    });
+
+    // 3. 트랙 양옆을 스쳐 지나가는 아치형 기둥 & 깃발 장식 (연속 전진 속도감!)
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x2f3542, roughness: 0.4 });
+    const flagColors = [0xff4757, 0xffa502, 0x2ed573, 0x1e90ff];
+    for (let i = 0; i < 6; i++) {
+        const zPos = -14 + i * 4.5;
+        [-6.4, 6.4].forEach((px, sideIdx) => {
+            const propGroup = new THREE.Group();
+            propGroup.position.set(px, 0, zPos);
+
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 3.6, 10), poleMat);
+            pole.position.y = 1.8;
+
+            const flag = new THREE.Mesh(
+                new THREE.BoxGeometry(0.08, 0.65, 1.1),
+                new THREE.MeshStandardMaterial({ color: flagColors[(i + sideIdx) % flagColors.length] })
+            );
+            flag.position.set(sideIdx === 0 ? 0.35 : -0.35, 3.1, 0);
+
+            const orb = new THREE.Mesh(
+                new THREE.SphereGeometry(0.24, 12, 12),
+                new THREE.MeshBasicMaterial({ color: 0xffd32a })
+            );
+            orb.position.y = 3.75;
+
+            propGroup.add(pole, flag, orb);
+            wallGameGroup.add(propGroup);
+            wallSceneryProps.push({ mesh: propGroup, speed: 6.5, resetZ: -16, maxZ: 11 });
+        });
+    }
+
+    // 4. 하늘을 떠다니는 입체 구름
+    const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+    [
+        { x: -18, y: 12, z: -22, s: 1.4 },
+        { x: 16,  y: 14, z: -26, s: 1.6 },
+        { x: -8,  y: 16, z: -32, s: 1.3 },
+        { x: 22,  y: 11, z: -14, s: 1.2 }
+    ].forEach(c => {
+        const cg = new THREE.Group();
+        cg.position.set(c.x, c.y, c.z);
+        cg.scale.setScalar(c.s);
+        [
+            { x: 0, y: 0, z: 0, r: 1.8 },
+            { x: -1.4, y: -0.2, z: 0.1, r: 1.3 },
+            { x: 1.5, y: -0.2, z: -0.1, r: 1.4 }
+        ].forEach(p => {
+            const m = new THREE.Mesh(new THREE.DodecahedronGeometry(p.r, 1), cloudMat);
+            m.position.set(p.x, p.y, p.z);
+            cg.add(m);
+        });
+        wallGameGroup.add(cg);
+    });
+
+    // 5. 공중 트랙(다리) 바닥: 가로 폭 12 (-6 ~ +6), 세로 길이 20 (-11 ~ +9)
+    const trackGeo = new THREE.BoxGeometry(12, 0.9, 20);
+    const trackMat = new THREE.MeshStandardMaterial({ color: 0xf8f9fa, roughness: 0.5 });
     const trackMesh = new THREE.Mesh(trackGeo, trackMat);
-    trackMesh.position.set(0, -0.4, 0);
+    trackMesh.position.set(0, -0.45, -1);
     trackMesh.receiveShadow = true;
     wallGameGroup.add(trackMesh);
+
+    // 트랙 하단 받침 빔(다리 입체감)
+    const underBeam = new THREE.Mesh(
+        new THREE.BoxGeometry(8.5, 1.4, 20),
+        new THREE.MeshStandardMaterial({ color: 0x57606f, roughness: 0.7 })
+    );
+    underBeam.position.set(0, -1.5, -1);
+    wallGameGroup.add(underBeam);
 
     // 트랙 테두리 안전선(노랑/검정 경고 라인)
     const borderMat = new THREE.MeshStandardMaterial({ color: 0xffa502, roughness: 0.4 });
     [-5.85, 5.85].forEach(bx => {
-        const sideBorder = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.84, 18), borderMat);
-        sideBorder.position.set(bx, -0.39, 0);
+        const sideBorder = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.94, 20), borderMat);
+        sideBorder.position.set(bx, -0.44, -1);
         wallGameGroup.add(sideBorder);
     });
-    const backBorder = new THREE.Mesh(new THREE.BoxGeometry(12, 0.84, 0.35), new THREE.MeshStandardMaterial({ color: 0xff4757 }));
-    backBorder.position.set(0, -0.39, 8.85);
+    const backBorder = new THREE.Mesh(new THREE.BoxGeometry(12, 0.94, 0.4), new THREE.MeshStandardMaterial({ color: 0xff4757 }));
+    backBorder.position.set(0, -0.44, 8.8);
     wallGameGroup.add(backBorder);
 
     // 중앙 분리선 (왼쪽 구역 vs 오른쪽 구역 경계)
     const centerLine = new THREE.Mesh(
-        new THREE.BoxGeometry(0.18, 0.04, 18),
+        new THREE.BoxGeometry(0.22, 0.04, 20),
         new THREE.MeshBasicMaterial({ color: 0x3742fa })
     );
-    centerLine.position.set(0, 0.02, 0);
+    centerLine.position.set(0, 0.02, -1);
     wallGameGroup.add(centerLine);
 
-    // 2. 상단 대형 3D 문법 문제 모니터
+    // 6. 상단 대형 3D 문법 문제 전광판 모니터
     const monitorFrame = new THREE.Mesh(
-        new THREE.BoxGeometry(13.5, 4.4, 0.5),
+        new THREE.BoxGeometry(13.8, 4.5, 0.55),
         new THREE.MeshStandardMaterial({ color: 0x1e272e, roughness: 0.3 })
     );
-    monitorFrame.position.set(0, 6.2, -9.5);
+    monitorFrame.position.set(0, 6.8, -11.2);
     wallGameGroup.add(monitorFrame);
 
-    [-5.5, 5.5].forEach(px => {
+    [-5.6, 5.6].forEach(px => {
         const leg = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.25, 0.3, 6.2, 12),
+            new THREE.CylinderGeometry(0.26, 0.32, 6.8, 12),
             new THREE.MeshStandardMaterial({ color: 0x2f3542 })
         );
-        leg.position.set(px, 3.1, -9.5);
+        leg.position.set(px, 3.4, -11.2);
         wallGameGroup.add(leg);
     });
 
@@ -100,13 +228,13 @@ function buildWallMinigameStage() {
     wallMonitorTexture = new THREE.CanvasTexture(wallMonitorCanvas);
 
     const monitorScreen = new THREE.Mesh(
-        new THREE.PlaneGeometry(12.8, 3.9),
+        new THREE.PlaneGeometry(13.1, 4.0),
         new THREE.MeshBasicMaterial({ map: wallMonitorTexture })
     );
-    monitorScreen.position.set(0, 6.2, -9.22);
+    monitorScreen.position.set(0, 6.8, -10.9);
     wallGameGroup.add(monitorScreen);
 
-    // 3. 왼쪽 / 오른쪽 선택 벽 생성
+    // 7. 왼쪽 / 오른쪽 선택 벽 생성
     leftWallCanvas = document.createElement('canvas');
     leftWallCanvas.width = 512;
     leftWallCanvas.height = 384;
@@ -119,30 +247,30 @@ function buildWallMinigameStage() {
     rightWallCtx = rightWallCanvas.getContext('2d');
     rightWallTex = new THREE.CanvasTexture(rightWallCanvas);
 
-    const leftWallGeo = new THREE.BoxGeometry(5.7, 3.6, 0.7);
+    const leftWallGeo = new THREE.BoxGeometry(5.75, 3.6, 0.8);
     const leftMats = [
         new THREE.MeshStandardMaterial({ color: 0x3742fa }),
         new THREE.MeshStandardMaterial({ color: 0x3742fa }),
         new THREE.MeshStandardMaterial({ color: 0x5352ed }),
         new THREE.MeshStandardMaterial({ color: 0x2f3542 }),
-        new THREE.MeshBasicMaterial({ map: leftWallTex }), // 앞면(+Z)
+        new THREE.MeshBasicMaterial({ map: leftWallTex }),
         new THREE.MeshStandardMaterial({ color: 0x3742fa })
     ];
     leftWallMesh = new THREE.Mesh(leftWallGeo, leftMats);
-    leftWallMesh.position.set(-2.95, 1.8, -8.2);
+    leftWallMesh.position.set(-2.95, 1.8, -10.5);
     leftWallMesh.castShadow = true;
 
-    const rightWallGeo = new THREE.BoxGeometry(5.7, 3.6, 0.7);
+    const rightWallGeo = new THREE.BoxGeometry(5.75, 3.6, 0.8);
     const rightMats = [
         new THREE.MeshStandardMaterial({ color: 0xff4757 }),
         new THREE.MeshStandardMaterial({ color: 0xff4757 }),
         new THREE.MeshStandardMaterial({ color: 0xff6b81 }),
         new THREE.MeshStandardMaterial({ color: 0x2f3542 }),
-        new THREE.MeshBasicMaterial({ map: rightWallTex }), // 앞면(+Z)
+        new THREE.MeshBasicMaterial({ map: rightWallTex }),
         new THREE.MeshStandardMaterial({ color: 0xff4757 })
     ];
     rightWallMesh = new THREE.Mesh(rightWallGeo, rightMats);
-    rightWallMesh.position.set(2.95, 1.8, -8.2);
+    rightWallMesh.position.set(2.95, 1.8, -10.5);
     rightWallMesh.castShadow = true;
 
     wallGameGroup.add(leftWallMesh, rightWallMesh);
@@ -162,7 +290,7 @@ function drawWallQuestionBoard(qObj, roundNum, totalRounds, statusMsg = '') {
     ctx.fillStyle = '#70a1ff';
     ctx.font = '900 28px "Fredoka", "Noto Sans KR", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`QUESTION ${roundNum} / ${totalRounds}`, W / 2, 52);
+    ctx.fillText(`WAVE ${roundNum} / ${totalRounds}`, W / 2, 52);
 
     ctx.fillStyle = '#ffffff';
     ctx.font = '900 48px "Fredoka", "Noto Sans KR", sans-serif';
@@ -170,7 +298,7 @@ function drawWallQuestionBoard(qObj, roundNum, totalRounds, statusMsg = '') {
 
     ctx.fillStyle = '#2ed573';
     ctx.font = 'bold 28px "Noto Sans KR", sans-serif';
-    ctx.fillText(statusMsg || '◀ 왼쪽 벽 또는 오른쪽 벽 ▶ 앞으로 이동하세요!', W / 2, 265);
+    ctx.fillText(statusMsg || '◀ 정답 벽 줄에 서면 벽이 부서지고, 오답 벽은 뒤로 밀어냅니다! ▶', W / 2, 265);
 
     wallMonitorTexture.needsUpdate = true;
 }
@@ -196,11 +324,11 @@ function drawChoiceWallTexture(ctx, tex, labelTag, optionText, bgColor) {
 
 function spawnWallDestructionFragments(centerX, zPos, colorHex) {
     const fragMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4 });
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < 26; i++) {
         const size = 0.35 + Math.random() * 0.45;
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), fragMat);
         mesh.position.set(
-            centerX + (Math.random() - 0.5) * 5.0,
+            centerX + (Math.random() - 0.5) * 5.2,
             0.4 + Math.random() * 3.0,
             zPos + (Math.random() - 0.5) * 0.6
         );
@@ -208,23 +336,29 @@ function spawnWallDestructionFragments(centerX, zPos, colorHex) {
         wallFragments.push({
             mesh,
             vx: (Math.random() - 0.5) * 9,
-            vy: 4 + Math.random() * 7,
-            vz: -4 - Math.random() * 8,
+            vy: 3.5 + Math.random() * 6.5,
+            vz: 2.5 + Math.random() * 5.0,
             rx: (Math.random() - 0.5) * 10,
             ry: (Math.random() - 0.5) * 10,
-            life: 1.4
+            life: 1.2
         });
     }
 }
 
-function setupWallQuestion(idx) {
+function startNextWallWave(idx) {
+    wallQuestionIndex = idx;
+    wallWaveTimer = 0;
+    wallPassCheckedThisWave = false;
+    leftWallShattered = false;
+    rightWallShattered = false;
+
     const qData = GRAMMAR_QUESTIONS[wallQuestionOrder[idx % GRAMMAR_QUESTIONS.length]];
     wallRoundAnswerSide = qData.ans;
 
     leftWallMesh.visible = true;
     rightWallMesh.visible = true;
-    leftWallMesh.position.set(-2.95, 1.8, -8.2);
-    rightWallMesh.position.set(2.95, 1.8, -8.2);
+    leftWallMesh.position.set(-2.95, 1.8, -10.5);
+    rightWallMesh.position.set(2.95, 1.8, -10.5);
 
     drawWallQuestionBoard(qData, idx + 1, wallQuestionOrder.length);
     drawChoiceWallTexture(leftWallCtx, leftWallTex, '◀ LEFT', qData.left, '#3742fa');
@@ -233,6 +367,7 @@ function setupWallQuestion(idx) {
     document.getElementById('wall-question-text').textContent = `Q${idx + 1}. ${qData.q}`;
     document.getElementById('wall-left-label').textContent = `◀ ${qData.left}`;
     document.getElementById('wall-right-label').textContent = `${qData.right} ▶`;
+    document.getElementById('wall-phase-banner').textContent = `🧱 WAVE ${idx + 1}: 정답 벽 앞으로 이동! (좌클릭 밀치기!)`;
 }
 
 // ==========================================
@@ -246,7 +381,6 @@ window.enterGrammarWallMinigame = function(seedNum) {
     wallPhaseTimer = 0;
     wallQuestionIndex = 0;
 
-    // 모든 클라이언트가 동일한 문제 순서를 갖도록 시드 기반 셔플
     const indices = GRAMMAR_QUESTIONS.map((_, i) => i);
     let s = Number(seedNum || 12345);
     for (let i = indices.length - 1; i > 0; i--) {
@@ -254,7 +388,7 @@ window.enterGrammarWallMinigame = function(seedNum) {
         const j = Math.floor((s / 233280) * (i + 1));
         [indices[i], indices[j]] = [indices[j], indices[i]];
     }
-    wallQuestionOrder = indices.slice(0, 5); // 총 5문제 진행
+    wallQuestionOrder = indices.slice(0, 6); // 총 6개 연속 웨이브
 
     buildWallMinigameStage();
     wallPlayers = {};
@@ -269,25 +403,25 @@ window.enterGrammarWallMinigame = function(seedNum) {
             m.charType || 'chameleon',
             m.colorHex !== undefined ? m.colorHex : 0x2ed573,
             spawnX,
-            2.2,
+            2.6,
             m.name || '플레이어',
             wallGameGroup
         );
-        charObj.group.rotation.y = Math.PI; // 위쪽 모니터를 바라봄
+        charObj.group.rotation.y = Math.PI;
         wallPlayers[m.id] = {
             member: m,
             char: charObj,
             x: spawnX,
-            z: 2.2,
+            z: 2.6,
             vx: 0,
             vz: 0,
             targetX: spawnX,
-            targetZ: 2.2,
+            targetZ: 2.6,
             alive: true,
             survivedCount: 0,
+            beingPushedByWall: false,
             isFalling: false,
             fallVy: 0,
-            pushedBack: false,
             lastShoveId: 0
         };
     });
@@ -298,16 +432,16 @@ window.enterGrammarWallMinigame = function(seedNum) {
     wallGameGroup.visible = true;
 
     scene.background = new THREE.Color(0x70a1ff);
-    scene.fog = new THREE.Fog(0x70a1ff, 28, 85);
+    scene.fog = new THREE.Fog(0x70a1ff, 35, 110);
 
     document.getElementById('party-room-hud').classList.add('hidden');
     document.getElementById('party-scoreboard-hud').classList.add('hidden');
     document.getElementById('wall-game-overlay').classList.remove('hidden');
     document.getElementById('wall-result-panel').classList.add('hidden');
-    document.getElementById('wall-phase-banner').textContent = '🧱 위쪽 모니터의 영어 문법 문제를 보고 정답 벽 앞에 서세요!';
-    document.getElementById('wall-timer-text').textContent = '10.0';
+    document.getElementById('wall-phase-banner').textContent = '🧱 연속해서 다가오는 문법 벽을 돌파하세요!';
+    document.getElementById('wall-timer-text').textContent = 'READY';
 
-    setupWallQuestion(0);
+    startNextWallWave(0);
     renderWallAliveBadges();
 };
 
@@ -318,7 +452,7 @@ function renderWallAliveBadges() {
     Object.values(wallPlayers).forEach(p => {
         const badge = document.createElement('span');
         badge.className = `px-3 py-1 rounded-full text-xs font-black shadow ${p.alive ? 'bg-emerald-500 text-white' : 'bg-slate-600 text-slate-300 line-through'}`;
-        badge.textContent = `${p.member.emoji || ''} ${p.member.name} (${p.survivedCount}승)`;
+        badge.textContent = `${p.member.emoji || ''} ${p.member.name} (${p.survivedCount}돌파)`;
         listEl.appendChild(badge);
     });
 }
@@ -342,7 +476,7 @@ window.onWallPlayersUpdated = function(playersState) {
             wp.char.shove();
 
             const me = wallPlayers[myId];
-            if (me && me.alive && st.shoveTargetId === myId && wallSubPhase === 'CHOOSE') {
+            if (me && me.alive && !me.beingPushedByWall && st.shoveTargetId === myId && wallSubPhase === 'RUN') {
                 me.vx += (st.shoveVx || 0);
                 me.vz += (st.shoveVz || 0);
             }
@@ -351,10 +485,10 @@ window.onWallPlayersUpdated = function(playersState) {
 };
 
 window.handleWallLocalShove = function() {
-    if (!window.isWallMinigameActive || wallSubPhase !== 'CHOOSE') return;
+    if (!window.isWallMinigameActive || wallSubPhase !== 'RUN') return;
     const myId = window.myPlayerId || 'local';
     const me = wallPlayers[myId];
-    if (!me || !me.alive) return;
+    if (!me || !me.alive || me.beingPushedByWall) return;
 
     me.char.shove();
     const wave = new THREE.Mesh(
@@ -395,55 +529,11 @@ window.handleWallLocalShove = function() {
     }
 };
 
-// ==========================================
-// 벽 충돌 및 정답 파괴 / 오답 밀려남 판정
-// ==========================================
-function triggerWallImpactCheck() {
-    wallSubPhase = 'IMPACT';
-    wallPhaseTimer = 0;
-
-    const qData = GRAMMAR_QUESTIONS[wallQuestionOrder[wallQuestionIndex]];
-    const isLeftCorrect = wallRoundAnswerSide === 'LEFT';
-
-    // 정답 벽은 산산조각 파괴!
-    if (isLeftCorrect) {
-        leftWallMesh.visible = false;
-        spawnWallDestructionFragments(-2.95, 1.2, 0x3742fa);
-    } else {
-        rightWallMesh.visible = false;
-        spawnWallDestructionFragments(2.95, 1.2, 0xff4757);
-    }
-
-    drawWallQuestionBoard(
-        qData,
-        wallQuestionIndex + 1,
-        wallQuestionOrder.length,
-        `정답: ${isLeftCorrect ? qData.left : qData.right} (${qData.exp})`
-    );
-    document.getElementById('wall-phase-banner').textContent = `💥 정답은 [${isLeftCorrect ? qData.left : qData.right}]!`;
-
-    // 각 플레이어의 위치(x < 0 왼쪽 vs x >= 0 오른쪽)로 생존/탈락 판정
-    Object.values(wallPlayers).forEach(p => {
-        if (!p.alive) return;
-        const choseLeft = p.x < 0;
-        const isCorrect = (choseLeft && isLeftCorrect) || (!choseLeft && !isLeftCorrect);
-
-        if (isCorrect) {
-            p.survivedCount += 1;
-            p.char.jump();
-        } else {
-            // 오답 벽에 부딪혀 뒤(+Z)로 강하게 밀려남!
-            p.pushedBack = true;
-            p.vz = 15.5;
-        }
-    });
-
-    renderWallAliveBadges();
-}
-
 function finishWallMinigameResults() {
+    if (wallSubPhase === 'RESULT') return;
     wallSubPhase = 'RESULT';
     document.getElementById('wall-phase-banner').textContent = '🏆 문법 벽 돌파 최종 결과!';
+    document.getElementById('wall-timer-text').textContent = 'END';
 
     const sorted = Object.values(wallPlayers).sort((a, b) => {
         if (b.alive !== a.alive) return (b.alive ? 1 : 0) - (a.alive ? 1 : 0);
@@ -527,12 +617,22 @@ window.exitWallMinigameToRoom = function() {
 };
 
 // ==========================================
-// 매 프레임 업데이트 및 단일 화면 카메라 렌더링
+// 매 프레임 업데이트: 끊김 없는 연속 벽 전진 & 오답 벽 밀림 물리
 // ==========================================
 window.updateAndRenderWallMinigame = function(dt, elapsed) {
     wallPhaseTimer += dt;
     const myId = window.myPlayerId || 'local';
     const me = wallPlayers[myId];
+
+    // 배경 가로등/깃발 기둥들이 뒤(+Z)로 계속 흘러가며 전진 속도감 연출
+    if (wallSubPhase === 'RUN') {
+        wallSceneryProps.forEach(prop => {
+            prop.mesh.position.z += prop.speed * dt;
+            if (prop.mesh.position.z > prop.maxZ) {
+                prop.mesh.position.z = prop.resetZ;
+            }
+        });
+    }
 
     // 파편 & 밀치기 충격파 업데이트
     for (let i = wallFragments.length - 1; i >= 0; i--) {
@@ -560,8 +660,8 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         }
     }
 
-    // 1. 내 캐릭터 이동(WASD/방향키) 처리
-    if (me && me.alive && wallSubPhase === 'CHOOSE') {
+    // 1. 내 캐릭터 이동 (오답 벽에 밀리는 중이 아닐 때 자유 이동)
+    if (me && me.alive && !me.beingPushedByWall && wallSubPhase === 'RUN') {
         let moveX = 0, moveZ = 0;
         if (keys.left) moveX -= 1;
         if (keys.right) moveX += 1;
@@ -570,8 +670,8 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
 
         if (moveX !== 0 || moveZ !== 0) {
             const len = Math.hypot(moveX, moveZ);
-            me.vx = (moveX / len) * 6.5;
-            me.vz = (moveZ / len) * 6.5;
+            me.vx = (moveX / len) * 6.8;
+            me.vz = (moveZ / len) * 6.8;
             me.char.group.rotation.y = Math.atan2(me.vx, me.vz);
         } else {
             me.vx *= 0.8;
@@ -579,10 +679,9 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         }
 
         me.x = Math.max(-5.3, Math.min(5.3, me.x + me.vx * dt));
-        me.z = Math.max(-1.0, Math.min(8.2, me.z + me.vz * dt));
+        me.z = Math.max(-0.5, Math.min(8.2, me.z + me.vz * dt));
         me.char.group.position.set(me.x, 0, me.z);
 
-        // 걷기 애니메이션
         if (Math.hypot(me.vx, me.vz) > 0.3) {
             const bounce = Math.abs(Math.sin(elapsed * 14));
             me.char.bodyPivot.position.y = bounce * 0.14;
@@ -592,16 +691,15 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
             me.char.bodyPivot.position.y = Math.sin(elapsed * 3) * 0.03;
         }
 
-        // 서버로 내 트랙 위치 전송
         if (Date.now() - lastWallPosSync > 70 && window.syncWallPlayerState && window.currentRoomInfo) {
             lastWallPosSync = Date.now();
             window.syncWallPlayerState(window.currentRoomInfo.code, { x: me.x, z: me.z });
         }
     }
 
-    // 2. 모든 플레이어 보간, 몸통 충돌 & 오답 벽 밀려남/추락 물리
+    // 2. 원격 플레이어 보간
     Object.entries(wallPlayers).forEach(([pid, p]) => {
-        if (pid !== myId && p.alive && !p.pushedBack) {
+        if (pid !== myId && p.alive && !p.beingPushedByWall) {
             const prevX = p.x, prevZ = p.z;
             p.x += (p.targetX - p.x) * 10 * dt;
             p.z += (p.targetZ - p.z) * 10 * dt;
@@ -612,68 +710,123 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
                 p.char.bodyPivot.position.y = Math.abs(Math.sin(elapsed * 14)) * 0.14;
             }
         }
+    });
 
-        // 오답 벽에 밀려 뒤로 날아가 낭떠러지 추락!
-        if (p.pushedBack) {
-            p.z += p.vz * dt;
-            p.char.group.rotation.x += 6 * dt;
-            if (p.z > 9.0) {
+    // 3. 상태별 진행
+    if (wallSubPhase === 'INTRO') {
+        if (wallPhaseTimer >= 1.8) {
+            wallSubPhase = 'RUN';
+            wallWaveTimer = 0;
+        }
+    } else if (wallSubPhase === 'RUN') {
+        wallWaveTimer += dt;
+        const remain = Math.max(0, WALL_WAVE_DURATION - wallWaveTimer);
+        document.getElementById('wall-timer-text').textContent = `${remain.toFixed(1)}s`;
+
+        // 벽이 z = -10.5 에서 z = +10.2 까지 멈춤 없이 일정한 속도로 쭉 전진!
+        const wallStartZ = -10.5;
+        const wallEndZ = 10.2;
+        const wallSpeed = (wallEndZ - wallStartZ) / WALL_WAVE_DURATION;
+        const currentWallZ = wallStartZ + wallWaveTimer * wallSpeed;
+
+        leftWallMesh.position.z = currentWallZ;
+        rightWallMesh.position.z = currentWallZ;
+
+        const isLeftCorrect = wallRoundAnswerSide === 'LEFT';
+        const wallFrontZ = currentWallZ + 0.65;
+
+        // 각 살아있는 플레이어와 다가오는 벽의 실시간 접촉 판정!
+        Object.values(wallPlayers).forEach(p => {
+            if (!p.alive) return;
+            const onLeftSide = p.x < 0;
+
+            // 벽 앞면이 플레이어 위치(p.z)에 도달했을 때!
+            if (wallFrontZ >= p.z && currentWallZ - 0.5 <= p.z + 0.6) {
+                if ((onLeftSide && isLeftCorrect) || (!onLeftSide && !isLeftCorrect)) {
+                    // 정답 벽: 벽이 파편으로 산산조각 부서지며 플레이어는 그대로 통과!
+                    if (onLeftSide && !leftWallShattered) {
+                        leftWallShattered = true;
+                        leftWallMesh.visible = false;
+                        spawnWallDestructionFragments(-2.95, currentWallZ, 0x3742fa);
+                    } else if (!onLeftSide && !rightWallShattered) {
+                        rightWallShattered = true;
+                        rightWallMesh.visible = false;
+                        spawnWallDestructionFragments(2.95, currentWallZ, 0xff4757);
+                    }
+                } else {
+                    // 오답 벽: 튕겨 날아가는 게 아니라 벽 앞면에 밀착되어 뒤(+Z)로 쭉 밀려남!
+                    p.beingPushedByWall = true;
+                    p.z = wallFrontZ;
+                    p.char.group.position.z = p.z;
+                    p.char.bodyPivot.rotation.x = -0.25; // 벽에 밀려 버둥거리는 자세
+                    p.char.leftLeg.position.z = Math.sin(elapsed * 26) * 0.25;
+                    p.char.rightLeg.position.z = -Math.sin(elapsed * 26) * 0.25;
+                }
+            }
+
+            // 트랙 뒤쪽 끝(z > 9.0)까지 밀려나면 낭떠러지로 추락 탈락!
+            if (p.z > 9.0 && !p.isFalling) {
                 p.isFalling = true;
-                p.fallVy -= 24 * dt;
+            }
+            if (p.isFalling) {
+                p.z += wallSpeed * 0.6 * dt;
+                p.fallVy -= 26 * dt;
                 p.char.group.position.y += p.fallVy * dt;
+                p.char.group.position.z = p.z;
                 if (p.char.group.position.y < -12) {
                     p.alive = false;
-                    p.pushedBack = false;
+                    p.beingPushedByWall = false;
                     p.char.group.visible = false;
                     renderWallAliveBadges();
                 }
             }
-            p.char.group.position.x = p.x;
-            p.char.group.position.z = p.z;
-        }
-    });
+        });
 
-    // 3. 라운드 상태 머신
-    if (wallSubPhase === 'INTRO') {
-        document.getElementById('wall-timer-text').textContent = '10.0';
-        if (wallPhaseTimer >= 2.5) {
-            wallSubPhase = 'CHOOSE';
-            wallPhaseTimer = 0;
-            document.getElementById('wall-phase-banner').textContent = '🏃 정답 벽 앞으로 이동! (좌클릭으로 밀치기 가능!)';
-        }
-    } else if (wallSubPhase === 'CHOOSE') {
-        const remain = Math.max(0, 10.0 - wallPhaseTimer);
-        document.getElementById('wall-timer-text').textContent = remain.toFixed(1);
+        // 벽이 플레이어 라인(z = 4.5)을 지나갈 때 정답 공개 & 생존자 돌파 횟수 +1
+        if (!wallPassCheckedThisWave && currentWallZ > 4.5) {
+            wallPassCheckedThisWave = true;
+            const qData = GRAMMAR_QUESTIONS[wallQuestionOrder[wallQuestionIndex]];
+            if (isLeftCorrect && !leftWallShattered) {
+                leftWallShattered = true;
+                leftWallMesh.visible = false;
+                spawnWallDestructionFragments(-2.95, currentWallZ, 0x3742fa);
+            } else if (!isLeftCorrect && !rightWallShattered) {
+                rightWallShattered = true;
+                rightWallMesh.visible = false;
+                spawnWallDestructionFragments(2.95, currentWallZ, 0xff4757);
+            }
 
-        // 남은 시간 3.5초부터 선택 벽이 플레이어들 앞(z = 1.2)으로 서서히 다가옴!
-        if (remain <= 3.5) {
-            const t = 1 - (remain / 3.5);
-            const wallZ = -8.2 + t * 9.4; // -8.2 -> +1.2
-            leftWallMesh.position.z = wallZ;
-            rightWallMesh.position.z = wallZ;
+            Object.values(wallPlayers).forEach(p => {
+                if (p.alive && !p.beingPushedByWall && !p.isFalling) {
+                    p.survivedCount += 1;
+                    p.char.jump();
+                }
+            });
+            drawWallQuestionBoard(
+                qData,
+                wallQuestionIndex + 1,
+                wallQuestionOrder.length,
+                `정답: ${isLeftCorrect ? qData.left : qData.right} (${qData.exp})`
+            );
+            renderWallAliveBadges();
         }
 
-        if (remain <= 0) {
-            triggerWallImpactCheck();
-        }
-    } else if (wallSubPhase === 'IMPACT') {
-        if (wallPhaseTimer >= 3.2) {
-            const aliveCount = Object.values(wallPlayers).filter(p => p.alive).length;
-            wallQuestionIndex += 1;
+        // 벽이 트랙 뒤로 완전히 빠져나가자마자 끊김 없이 즉시 다음 문제 벽 등장!
+        if (wallWaveTimer >= WALL_WAVE_DURATION) {
+            const alivePlayers = Object.values(wallPlayers).filter(p => p.alive);
+            const totalPlayers = Object.keys(wallPlayers).length;
+            const nextIdx = wallQuestionIndex + 1;
 
-            if (aliveCount <= 1 && Object.keys(wallPlayers).length > 1 || aliveCount === 0 || wallQuestionIndex >= wallQuestionOrder.length) {
+            if ((totalPlayers > 1 && alivePlayers.length <= 1) || alivePlayers.length === 0 || nextIdx >= wallQuestionOrder.length) {
                 finishWallMinigameResults();
             } else {
-                wallSubPhase = 'CHOOSE';
-                wallPhaseTimer = 0;
-                setupWallQuestion(wallQuestionIndex);
-                document.getElementById('wall-phase-banner').textContent = `🏃 문제 ${wallQuestionIndex + 1}! 정답 벽 앞으로 이동하세요!`;
+                startNextWallWave(nextIdx);
             }
         }
     }
 
-    // 4. 단일 통합 3D 카메라 뷰 (트랙 전체와 상단 모니터가 한눈에 들어오는 구도)
-    camera.position.lerp(new THREE.Vector3(0, 9.5, 16.5), 5 * dt);
-    camera.lookAt(0, 2.2, -2.5);
+    // 4. 단일 통합 3D 카메라 뷰
+    camera.position.lerp(new THREE.Vector3(0, 9.6, 16.8), 5 * dt);
+    camera.lookAt(0, 2.0, -2.5);
     renderer.render(scene, camera);
 };
