@@ -826,7 +826,9 @@ function animate() {
                             const spinBtn = document.getElementById('spin-roulette-btn');
                             spinBtn.textContent = '다시 돌리기 🎰';
                             spinBtn.classList.remove('hidden');
-                            document.getElementById('start-minigame-btn').classList.remove('hidden');
+                            const startMiniBtn = document.getElementById('start-minigame-btn');
+                            startMiniBtn.textContent = `미니게임 시작! ${selectedRouletteGame.icon}`;
+                            startMiniBtn.classList.remove('hidden');
                         }
                     }
                 }
@@ -977,7 +979,7 @@ function animate() {
 }
 
 window.onload = function () {
-    console.log("4");
+    console.log("5");
     initScene();
     initCharacterSelectorUI();
     setupEvents();
