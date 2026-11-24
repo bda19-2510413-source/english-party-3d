@@ -941,6 +941,7 @@ function animate() {
 }
 
 window.onload = function () {
+    console.log("1");
     initScene();
     initCharacterSelectorUI();
     setupEvents();
