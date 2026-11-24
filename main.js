@@ -482,6 +482,30 @@ window.onRoomMembersUpdated = function() {
     }
 };
 
+// 모든 파티원이 미니게임 결과를 완료했을 때만 방장의 '파티 룸으로 돌아가기' 버튼 활성화!
+window.onMinigameFinishedPlayersUpdated = function(finishedMap) {
+    if (!window.currentRoomInfo || window.currentRoomInfo.role !== 'HOST') return;
+    const members = window.currentRoomInfo.members || [];
+    if (members.length === 0) return;
+
+    const allDone = members.every(m => Boolean(finishedMap[m.id]));
+    const doneCount = members.filter(m => Boolean(finishedMap[m.id])).length;
+
+    ['bomb-next-round-btn', 'wall-next-round-btn'].forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        if (allDone) {
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            btn.textContent = '파티 룸으로 돌아가기 🛋️';
+        } else {
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            btn.textContent = `⏳ 파티원 종료 대기 중 (${doneCount}/${members.length}명 완료)`;
+        }
+    });
+};
+
 // ==========================================
 // 등수별 누적 점수(PT) 관리 & 파티 룸 순위판 렌더링
 // ==========================================
@@ -651,6 +675,18 @@ window.startRemoteRouletteSpin = function(targetIdx) {
 };
 
 function beginRouletteAnimation(targetIdx) {
+    // 혹시 미니게임 화면이 남아있는 상태였다면 안전하게 파티 룸 상태로 전환
+    if (window.isBombMinigameActive || window.isWallMinigameActive) {
+        window.isBombMinigameActive = false;
+        window.isWallMinigameActive = false;
+        document.getElementById('bomb-game-overlay').classList.add('hidden');
+        document.getElementById('wall-game-overlay').classList.add('hidden');
+        if (bombGameGroup) bombGameGroup.visible = false;
+        if (typeof wallGameGroup !== 'undefined' && wallGameGroup) wallGameGroup.visible = false;
+        partyRoomGroup.visible = true;
+        document.getElementById('party-room-hud').classList.remove('hidden');
+        document.getElementById('party-scoreboard-hud').classList.remove('hidden');
+    }
     gamePhase = 'ROOM_MONITOR';
     rouletteState = 'SPINNING';
     rouletteTargetIndex = targetIdx;
@@ -941,7 +977,7 @@ function animate() {
 }
 
 window.onload = function () {
-    console.log("2");
+    console.log("3");
     initScene();
     initCharacterSelectorUI();
     setupEvents();
