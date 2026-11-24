@@ -477,7 +477,7 @@ function handleLocalLobbyShove() {
 window.onRoomMembersUpdated = function() {
     updateMonitorCanvas();
     renderPartyScoreboard();
-    if (gamePhase !== 'LOBBY' && gamePhase !== 'MINIGAME_BOMB') {
+    if (gamePhase !== 'LOBBY' && gamePhase !== 'MINIGAME_BOMB' && gamePhase !== 'MINIGAME_WALL') {
         syncSofaCharacters();
     }
 };
@@ -489,13 +489,11 @@ window.awardMinigamePoints = function(awardedPointsMap) {
     if (!window.currentRoomInfo) return;
     const isHost = window.currentRoomInfo.role === 'HOST';
 
-    // 로컬 멤버 점수 즉시 업데이트
     window.currentRoomInfo.members.forEach(m => {
         const add = awardedPointsMap[m.id] || 0;
         m.points = (m.points || 0) + add;
     });
 
-    // 방장이면 Firebase DB에도 누적 점수 및 다음 라운드 번호 동기화
     if (isHost && window.syncSaveRoundPoints) {
         window.syncSaveRoundPoints(window.currentRoomInfo.code, window.currentRoomInfo.members);
     }
@@ -614,7 +612,6 @@ function startPartySequence() {
     document.getElementById('spin-roulette-btn').classList.add('hidden');
     document.getElementById('start-minigame-btn').classList.add('hidden');
     const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
-    // 한 번이라도 미니게임을 플레이한 후에는 로비로 돌아갈 수 없고 반드시 룰렛을 돌려야 함
     document.getElementById('return-lobby-btn').classList.toggle('hidden', !isHost || window.hasPlayedFirstRound);
     document.getElementById('party-status-text').textContent = '🛋️ 소파로 걸어가 자리에 앉는 중...';
 
