@@ -782,22 +782,24 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
             wallSubPhase = 'RUN';
             wallWaveTimer = 0;
         }
-    } else if (wallSubPhase === 'RUN') {
-        wallWaveTimer += dt;
-        const remain = Math.max(0, WALL_WAVE_DURATION - wallWaveTimer);
-        document.getElementById('wall-timer-text').textContent = `${remain.toFixed(1)}s`;
-
-        // 벽이 z = -10.5 에서 z = +10.2 까지 멈춤 없이 일정한 속도로 쭉 전진!
+        // 벽이 z = -10.5 에서 z = +10.2 까지 전진 (초반은 천천히 눈치싸움, 후반부 급가속!)
+        const progressRatio = Math.min(1, wallWaveTimer / WALL_WAVE_DURATION);
+        // 초반 60% 구간은 완만하게 다가오고, 마지막 40% 구간에서 가속(ease-in)되어 빠르게 돌진!
+        const easedProgress = progressRatio < 0.6
+            ? progressRatio * 0.72
+            : 0.432 + Math.pow((progressRatio - 0.6) / 0.4, 1.55) * 0.568;
         const wallStartZ = -10.5;
         const wallEndZ = 10.2;
-        const wallSpeed = (wallEndZ - wallStartZ) / WALL_WAVE_DURATION;
-        const currentWallZ = wallStartZ + wallWaveTimer * wallSpeed;
+        const currentWallZ = wallStartZ + easedProgress * (wallEndZ - wallStartZ);
+        const currentWallSpeed = progressRatio < 0.6 ? 2.4 : 6.8;
 
         leftWallMesh.position.z = currentWallZ;
         rightWallMesh.position.z = currentWallZ;
 
         const isLeftCorrect = wallRoundAnswerSide === 'LEFT';
         const wallFrontZ = currentWallZ + 0.65;
+        // 중반 판정 라인(z = 4.2) 이전까지는 정답/오답 둘 다 부서지지 않고 똑같이 밀어내어 꼼수 방지!
+        const isRevealPointReached = currentWallZ >= 4.2;
 
         // 각 살아있는 플레이어와 다가오는 벽의 실시간 접촉 판정!
         Object.values(wallPlayers).forEach(p => {
@@ -805,16 +807,14 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
             const onLeftSide = p.x < 0;
             const inCorrectZone = (onLeftSide && isLeftCorrect) || (!onLeftSide && !isLeftCorrect);
 
-            // 매 프레임 밀림 상태를 재평가하여 옆으로 도망쳐 정답 구역에 들어가면 즉시 해제!
             p.beingPushedByWall = false;
             if (!p.isFalling) {
                 p.char.bodyPivot.rotation.x = 0;
             }
 
-            // 벽 앞면이 플레이어 위치(p.z)에 닿아 있을 때만 판정!
             if (!p.isFalling && wallFrontZ >= p.z && currentWallZ - 0.55 <= p.z + 0.5) {
-                if (inCorrectZone) {
-                    // 정답 벽: 벽이 파편으로 산산조각 부서지며 플레이어는 그대로 통과!
+                if (isRevealPointReached && inCorrectZone) {
+                    // 중반 이후 정답 벽: 산산조각 파편으로 부서지며 통과!
                     if (onLeftSide && !leftWallShattered) {
                         leftWallShattered = true;
                         leftWallMesh.visible = false;
@@ -825,7 +825,7 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
                         spawnWallDestructionFragments(2.95, currentWallZ, 0xff4757);
                     }
                 } else {
-                    // 오답 벽: 벽 앞면에 닿아 있는 동안만 뒤(+Z)로 밀려남 (옆으로 피하면 탈출 가능!)
+                    // 중반 전(양쪽 벽 모두) 또는 중반 이후 오답 벽: 플레이어를 뒤로 밀어냄!
                     p.beingPushedByWall = true;
                     p.z = wallFrontZ;
                     p.char.group.position.z = p.z;
@@ -841,7 +841,7 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
                 p.beingPushedByWall = false;
             }
             if (p.isFalling) {
-                p.z += wallSpeed * 0.55 * dt;
+                p.z += currentWallSpeed * 0.55 * dt;
                 p.fallVy -= 26 * dt;
                 p.char.group.position.y += p.fallVy * dt;
                 p.char.group.position.z = p.z;
@@ -853,8 +853,8 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
             }
         });
 
-        // 벽이 플레이어 라인(z = 4.5)을 지나갈 때 정답 공개 & 살아남은 플레이어 돌파 횟수 +1
-        if (!wallPassCheckedThisWave && currentWallZ > 4.5) {
+        // 중반 판정 라인(z >= 4.2) 도달 순간 정답 벽 파괴 & 정답 공개!
+        if (!wallPassCheckedThisWave && isRevealPointReached) {
             wallPassCheckedThisWave = true;
             const qData = GRAMMAR_QUESTIONS[wallQuestionOrder[wallQuestionIndex]];
             if (isLeftCorrect && !leftWallShattered) {
