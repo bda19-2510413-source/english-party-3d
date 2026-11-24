@@ -177,6 +177,13 @@ window.syncWallPlayerState = function(code, stateObj) {
     });
 };
 
+window.syncPlayerMinigameFinished = function(code) {
+    if (!db || !code) return;
+    update(ref(db, `rooms/${code}/minigameState/finishedPlayers`), {
+        [myPlayerId]: true
+    });
+};
+
 window.syncReturnToPartyRoom = async function(code, nextRound) {
     if (!db || !code) return;
     const payload = { minigameState: null };
@@ -235,6 +242,9 @@ function subscribeRoom(code) {
             if (mg.scores && typeof window.onBombScoresUpdated === 'function') {
                 window.onBombScoresUpdated(mg.scores);
             }
+            if (typeof window.onMinigameFinishedPlayersUpdated === 'function') {
+                window.onMinigameFinishedPlayersUpdated(mg.finishedPlayers || {});
+            }
         } else if (data.minigameState && data.minigameState.type === 'GRAMMAR_WALL') {
             const mg = data.minigameState;
             if (mg.startId && mg.startId !== lastHandledMinigameStartId) {
@@ -245,6 +255,9 @@ function subscribeRoom(code) {
             }
             if (mg.players && typeof window.onWallPlayersUpdated === 'function') {
                 window.onWallPlayersUpdated(mg.players);
+            }
+            if (typeof window.onMinigameFinishedPlayersUpdated === 'function') {
+                window.onMinigameFinishedPlayersUpdated(mg.finishedPlayers || {});
             }
         } else if (!data.minigameState) {
             if (window.isBombMinigameActive && typeof window.exitBombMinigameToRoom === 'function') {
