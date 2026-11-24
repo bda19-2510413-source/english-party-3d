@@ -372,12 +372,36 @@ function evaluateBombDefusalResults() {
     document.getElementById('bomb-winner-desc').textContent = `👑 ${winnerNamesText}님이 폭탄을 해체해 탈출했습니다!`;
     document.getElementById('bomb-result-panel').classList.remove('hidden');
 
+    if (window.syncPlayerMinigameFinished && window.currentRoomInfo) {
+        window.syncPlayerMinigameFinished(window.currentRoomInfo.code);
+    }
+
     const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
-    document.getElementById('bomb-next-round-btn').classList.toggle('hidden', !isHost);
-    document.getElementById('bomb-guest-next-wait').classList.toggle('hidden', isHost);
+    const nextBtn = document.getElementById('bomb-next-round-btn');
+    const waitEl = document.getElementById('bomb-guest-next-wait');
+    const totalMembers = window.currentRoomInfo ? window.currentRoomInfo.members.length : 1;
+
+    if (isHost) {
+        nextBtn.classList.remove('hidden');
+        if (totalMembers > 1) {
+            nextBtn.disabled = true;
+            nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            nextBtn.textContent = '⏳ 다른 파티원 결과 집계 대기 중...';
+        } else {
+            nextBtn.disabled = false;
+            nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            nextBtn.textContent = '파티 룸으로 돌아가기 🛋️';
+        }
+        waitEl.classList.add('hidden');
+    } else {
+        nextBtn.classList.add('hidden');
+        waitEl.classList.remove('hidden');
+    }
 }
 
 function finishBombMinigameToRoom() {
+    const nextBtn = document.getElementById('bomb-next-round-btn');
+    if (nextBtn && nextBtn.disabled) return;
     window.hasPlayedFirstRound = true;
     let nextRound = 2;
     if (window.currentRoomInfo) {
