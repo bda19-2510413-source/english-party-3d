@@ -622,12 +622,36 @@ function finishWallMinigameResults() {
     document.getElementById('wall-winner-desc').textContent = `👑 ${winners.join(', ')}님이 문법 벽 돌파에서 우승했습니다!`;
     document.getElementById('wall-result-panel').classList.remove('hidden');
 
+    if (window.syncPlayerMinigameFinished && window.currentRoomInfo) {
+        window.syncPlayerMinigameFinished(window.currentRoomInfo.code);
+    }
+
     const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
-    document.getElementById('wall-next-round-btn').classList.toggle('hidden', !isHost);
-    document.getElementById('wall-guest-next-wait').classList.toggle('hidden', isHost);
+    const nextBtn = document.getElementById('wall-next-round-btn');
+    const waitEl = document.getElementById('wall-guest-next-wait');
+    const totalMembers = window.currentRoomInfo ? window.currentRoomInfo.members.length : 1;
+
+    if (isHost) {
+        nextBtn.classList.remove('hidden');
+        if (totalMembers > 1) {
+            nextBtn.disabled = true;
+            nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            nextBtn.textContent = '⏳ 다른 파티원 결과 집계 대기 중...';
+        } else {
+            nextBtn.disabled = false;
+            nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            nextBtn.textContent = '파티 룸으로 돌아가기 🛋️';
+        }
+        waitEl.classList.add('hidden');
+    } else {
+        nextBtn.classList.add('hidden');
+        waitEl.classList.remove('hidden');
+    }
 }
 
 function finishWallMinigameToRoom() {
+    const nextBtn = document.getElementById('wall-next-round-btn');
+    if (nextBtn && nextBtn.disabled) return;
     window.hasPlayedFirstRound = true;
     let nextRound = 2;
     if (window.currentRoomInfo) {
