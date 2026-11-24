@@ -100,6 +100,7 @@ window.syncCreateRoom = async function(roomInfo, hostMember) {
     await set(ref(db, `rooms/${code}`), {
         code: code,
         hostId: myPlayerId,
+        maxMembers: 4,
         totalRounds: roomInfo.totalRounds,
         currentRound: 1,
         rouletteTriggerId: 0,
@@ -124,6 +125,12 @@ window.syncJoinRoom = async function(code, guestMember) {
         return { ok: false, error: "존재하지 않는 방 번호입니다!" };
     }
     const roomData = roomSnap.val();
+    const currentMembers = roomData.members ? Object.keys(roomData.members) : [];
+    const maxCap = roomData.maxMembers || 4;
+    if (!currentMembers.includes(myPlayerId) && currentMembers.length >= maxCap) {
+        return { ok: false, error: `⚠️ 방 정원이 가득 찼습니다! (최대 ${maxCap}명)` };
+    }
+
     await set(ref(db, `rooms/${code}/members/${myPlayerId}`), {
         ...guestMember,
         id: myPlayerId,
