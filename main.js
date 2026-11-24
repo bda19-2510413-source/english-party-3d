@@ -39,7 +39,7 @@ let tvCanvas, tvCtx, tvTexture;
 
 const ROULETTE_GAMES = [
     { id: 'BOMB_DEFUSAL', title: 'BOMB DEFUSAL', subtitle: '30초 폭탄 해체 영단어 타이핑!', color: '#ff4757', icon: '💣' },
-    { id: 'SPEED_VOCAB', title: 'SPEED VOCAB QUIZ', subtitle: '제한시간 영단어 스피드 퀴즈!', color: '#3742fa', icon: '⚡' },
+    { id: 'GRAMMAR_WALL', title: 'GRAMMAR WALL', subtitle: '영어 문법 정답 벽을 찾아 돌파하라!', color: '#3742fa', icon: '🧱' },
     { id: 'WORD_SCRAMBLE', title: 'WORD SCRAMBLE', subtitle: '뒤섞인 알파벳 블록 맞추기!', color: '#2ed573', icon: '🔤' },
     { id: 'SENTENCE_BUILDER', title: 'SENTENCE BUILDER', subtitle: '영어 문장 순서 조립하기!', color: '#ffa502', icon: '🧩' },
     { id: 'MYSTERY_QA', title: 'MYSTERY 20 Q&A', subtitle: '스무고개 영어 힌트 추리!', color: '#9c88ff', icon: '🕵️' },
@@ -71,13 +71,13 @@ function setupEvents() {
             if (e.code === 'Enter') confirmCharacterSelection();
             return;
         }
-        if (gamePhase !== 'LOBBY') return;
+        if (gamePhase !== 'LOBBY' && gamePhase !== 'MINIGAME_WALL') return;
 
         if (e.code === 'KeyW' || e.code === 'ArrowUp') keys.up = true;
         if (e.code === 'KeyS' || e.code === 'ArrowDown') keys.down = true;
         if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
         if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
-        if (e.code === 'Space') {
+        if (e.code === 'Space' && gamePhase === 'LOBBY') {
             e.preventDefault();
             if (currentNearObject) triggerInteraction();
             else if (playerChameleon) playerChameleon.jump();
@@ -112,6 +112,8 @@ function setupEvents() {
                 playerChameleon.shove();
                 handleLocalLobbyShove();
             }
+        } else if (dragDistance < 6 && gamePhase === 'MINIGAME_WALL' && typeof window.handleWallLocalShove === 'function') {
+            window.handleWallLocalShove();
         }
     });
 
@@ -622,7 +624,9 @@ function startPartySequence() {
 
 function triggerRouletteSpin() {
     if (window.currentRoomInfo && window.currentRoomInfo.role !== 'HOST') return;
-    const targetIdx = 0; // 첫 번째 미니게임: 폭탄 해체하기 (BOMB DEFUSAL)
+    // 1라운드(첫 게임)는 폭탄 해체(0), 2라운드 이후는 문법 벽 돌파(1) 또는 랜덤 선택!
+    const curR = window.currentRoomInfo ? (window.currentRoomInfo.currentRound || 1) : 1;
+    const targetIdx = curR === 1 ? 0 : (curR === 2 ? 1 : Math.floor(Math.random() * 2));
     beginRouletteAnimation(targetIdx);
 
     if (window.syncSpinRoulette && window.currentRoomInfo) {
@@ -632,10 +636,15 @@ function triggerRouletteSpin() {
 
 function triggerStartSelectedMinigame() {
     if (window.currentRoomInfo && window.currentRoomInfo.role !== 'HOST') return;
+    const chosenId = selectedRouletteGame ? selectedRouletteGame.id : 'BOMB_DEFUSAL';
+    const seedVal = Math.floor(Math.random() * 100000);
+
     if (window.syncStartMinigame && window.currentRoomInfo) {
-        window.syncStartMinigame(window.currentRoomInfo.code, 'BOMB_DEFUSAL');
+        window.syncStartMinigame(window.currentRoomInfo.code, chosenId);
     }
-    if (typeof window.enterBombDefusalMinigame === 'function') {
+    if (chosenId === 'GRAMMAR_WALL' && typeof window.enterGrammarWallMinigame === 'function') {
+        window.enterGrammarWallMinigame(seedVal);
+    } else if (typeof window.enterBombDefusalMinigame === 'function') {
         window.enterBombDefusalMinigame();
     }
 }
@@ -799,22 +808,11 @@ function animate() {
         return;
     }
 
-    // 로비 다른 플레이어 위치 보간, 몸통 부딪힘 반발 및 걷기/밀치기 애니메이션 업데이트
-    Object.values(remoteLobbyPlayers).forEach(remote => {
-        const g = remote.char.group;
-        const prevX = g.position.x;
-        const prevZ = g.position.z;
-        g.position.lerp(remote.targetPos, 10 * dt);
-
-        if (playerChameleon && !isSelectingCharacter) {
-            const dx = playerChameleon.group.position.x - g.position.x;
-            const dz = playerChameleon.group.position.z - g.position.z;
-            const dist = Math.hypot(dx, dz);
-            if (dist > 0.01 && dist < 1.15) {
-                const push = (1.15 - dist) * 6.5 * dt;
-                playerChameleon.group.position.x += (dx / dist) * push;
-                playerChameleon.group.position.z += (dz / dist) * push;
-            }
+    // 미니게임 2: 영어 문법 벽 돌파 독립 모듈 렌더링
+    if (gamePhase === 'MINIGAME_WALL' && typeof window.updateAndRenderWallMinigame === 'function') {
+        window.updateAndRenderWallMinigame(dt, elapsed);
+        return;
+    }
         }
 
         let diff = remote.targetRotY - g.rotation.y;
