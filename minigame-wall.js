@@ -552,6 +552,7 @@ function finishWallMinigameResults() {
     const nextBtn = document.getElementById('wall-next-round-btn');
     const waitEl = document.getElementById('wall-guest-next-wait');
     const totalMembers = window.currentRoomInfo ? window.currentRoomInfo.members.length : 1;
+    const isFinalRound = window.currentRoomInfo && (window.currentRoomInfo.currentRound >= window.currentRoomInfo.totalRounds);
 
     if (isHost) {
         nextBtn.classList.remove('hidden');
@@ -562,7 +563,7 @@ function finishWallMinigameResults() {
         } else {
             nextBtn.disabled = false;
             nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            nextBtn.textContent = '파티 룸으로 돌아가기 🛋️';
+            nextBtn.textContent = isFinalRound ? '최종 시상식 이동! 🏆' : '파티 룸으로 돌아가기 🛋️';
         }
         waitEl.classList.add('hidden');
     } else {
@@ -575,6 +576,16 @@ function finishWallMinigameToRoom() {
     const nextBtn = document.getElementById('wall-next-round-btn');
     if (nextBtn && nextBtn.disabled) return;
     window.hasPlayedFirstRound = true;
+    const isFinalRound = window.currentRoomInfo && (window.currentRoomInfo.currentRound >= window.currentRoomInfo.totalRounds);
+
+    if (isFinalRound) {
+        if (window.syncStartAwardCeremony && window.currentRoomInfo) {
+            window.syncStartAwardCeremony(window.currentRoomInfo.code);
+        }
+        window.exitWallMinigameToRoom(true);
+        return;
+    }
+
     let nextRound = 2;
     if (window.currentRoomInfo) {
         window.currentRoomInfo.currentRound = (window.currentRoomInfo.currentRound || 1) + 1;
@@ -583,16 +594,20 @@ function finishWallMinigameToRoom() {
     if (window.syncReturnToPartyRoom && window.currentRoomInfo) {
         window.syncReturnToPartyRoom(window.currentRoomInfo.code, nextRound);
     }
-    window.exitWallMinigameToRoom();
+    window.exitWallMinigameToRoom(false);
 }
 
-window.exitWallMinigameToRoom = function() {
+window.exitWallMinigameToRoom = function(goToCeremony = false) {
     window.hasPlayedFirstRound = true;
     window.isWallMinigameActive = false;
     if (window.PartySound) window.PartySound.stopBGM();
     document.getElementById('wall-game-overlay').classList.add('hidden');
     if (wallGameGroup) wallGameGroup.visible = false;
-    startPartySequence();
+    if (goToCeremony && typeof window.enterAwardCeremony === 'function') {
+        window.enterAwardCeremony();
+    } else {
+        startPartySequence();
+    }
 };
 
 window.updateAndRenderWallMinigame = function(dt, elapsed) {
