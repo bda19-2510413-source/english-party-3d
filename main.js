@@ -1037,7 +1037,7 @@ function animate() {
 }
 
 window.onload = function () {
-    console.log("8");
+    console.log("9");
     initScene();
     initCharacterSelectorUI();
     setupEvents();
