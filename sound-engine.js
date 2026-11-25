@@ -244,6 +244,48 @@ class PartySoundEngine {
         this.bgmTimer = setInterval(tick, sixteenthMs);
     }
 
+    // 6. 최종 시상대: 웅장한 축하 팡파르 + 축제의 행진곡 BGM
+    startAwardBGM() {
+        if (this.currentBgmMode === 'AWARD' && this.bgmTimer) return;
+        this.stopBGM();
+        this.currentBgmMode = 'AWARD';
+        this.step = 0;
+
+        // 입장 팡파르
+        const fanfare = [
+            { f: 523.25, d: 0.00, len: 0.14 },
+            { f: 659.25, d: 0.14, len: 0.14 },
+            { f: 783.99, d: 0.28, len: 0.14 },
+            { f: 1046.50, d: 0.44, len: 0.45 },
+            { f: 783.99, d: 0.92, len: 0.16 },
+            { f: 1046.50, d: 1.12, len: 0.65 }
+        ];
+        fanfare.forEach(n => {
+            this.playTone(n.f, n.len, 'triangle', 0.22, n.d);
+            this.playTone(n.f * 0.5, n.len, 'sine', 0.14, n.d);
+        });
+
+        const marchMelody = [
+            523.25, 659.25, 783.99, 1046.50, 880.00, 1046.50, 783.99, 0,
+            698.46, 880.00, 783.99, 659.25, 587.33, 659.25, 523.25, 0
+        ];
+        const marchBass = [
+            130.81, 196.00, 130.81, 196.00, 174.61, 220.00, 130.81, 196.00,
+            174.61, 220.00, 130.81, 164.81, 196.00, 246.94, 130.81, 196.00
+        ];
+        this.bgmTimer = setInterval(() => {
+            const idx = this.step % marchMelody.length;
+            if (idx % 2 === 0) this.playKick(0, 0.15);
+            if (idx % 4 === 2) this.playSnare(0, 0.08);
+            if (marchMelody[idx] > 0) {
+                this.playTone(marchMelody[idx], 0.22, 'triangle', 0.09);
+                this.playTone(marchMelody[idx] * 0.5, 0.22, 'sine', 0.05);
+            }
+            this.playTone(marchBass[idx], 0.2, 'triangle', 0.06);
+            this.step++;
+        }, 240);
+    }
+
     stopBGM() {
         this.currentBgmMode = null;
         if (this.bgmTimer) {
