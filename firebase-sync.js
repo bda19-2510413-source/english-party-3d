@@ -201,11 +201,36 @@ window.syncPlayerMinigameFinished = function(code) {
 
 window.syncReturnToPartyRoom = async function(code, nextRound) {
     if (!db || !code) return;
-    const payload = { minigameState: null };
+    const payload = { minigameState: null, ceremonyActive: false };
     if (typeof nextRound === 'number') {
         payload.currentRound = nextRound;
     }
     await update(ref(db, `rooms/${code}`), payload);
+};
+
+window.syncStartAwardCeremony = async function(code) {
+    if (!db || !code) return;
+    await update(ref(db, `rooms/${code}`), {
+        minigameState: null,
+        ceremonyActive: true
+    });
+};
+
+window.syncRestartSameParty = async function(code, membersList) {
+    if (!db || !code) return;
+    const updates = {
+        [`rooms/${code}/currentRound`]: 1,
+        [`rooms/${code}/rouletteTriggerId`]: 0,
+        [`rooms/${code}/rouletteTargetIndex`]: 0,
+        [`rooms/${code}/minigameState`]: null,
+        [`rooms/${code}/ceremonyActive`]: false
+    };
+    if (Array.isArray(membersList)) {
+        membersList.forEach(m => {
+            if (m.id) updates[`rooms/${code}/members/${m.id}/points`] = 0;
+        });
+    }
+    await update(ref(db), updates);
 };
 
 window.syncSaveRoundPoints = async function(code, updatedMembers) {
@@ -290,13 +315,18 @@ function subscribeRoom(code) {
             }
         } else if (!data.minigameState) {
             if (window.isBombMinigameActive && typeof window.exitBombMinigameToRoom === 'function') {
-                window.exitBombMinigameToRoom();
+                window.exitBombMinigameToRoom(Boolean(data.ceremonyActive));
             }
             if (window.isWallMinigameActive && typeof window.exitWallMinigameToRoom === 'function') {
-                window.exitWallMinigameToRoom();
+                window.exitWallMinigameToRoom(Boolean(data.ceremonyActive));
             }
             if (window.isRhythmMinigameActive && typeof window.exitRhythmMinigameToRoom === 'function') {
-                window.exitRhythmMinigameToRoom();
+                window.exitRhythmMinigameToRoom(Boolean(data.ceremonyActive));
+            }
+            if (data.ceremonyActive && !window.isAwardCeremonyActive && typeof window.enterAwardCeremony === 'function') {
+                window.enterAwardCeremony();
+            } else if (!data.ceremonyActive && window.isAwardCeremonyActive && typeof window.exitAwardCeremonyToRoom === 'function') {
+                window.exitAwardCeremonyToRoom();
             }
         }
     });
