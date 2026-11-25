@@ -1,12 +1,12 @@
 // ==========================================
 // 미니게임 2: 영어 문법 벽 돌파 (GRAMMAR WALL) 독립 모듈
 // - 끊김 없는 연속 웨이브 + 중반 라인 이후 정답 벽 파괴 & 후반 급가속
-// - 바다/하늘 섬/구름/깃발 기둥 배경 + 3.2초 시네마틱 오프닝 인트로
+// - 바다/하늘 섬/구름/깃발 기둥 배경 + 3.4초 시네마틱 오프닝 + READY / START! + 질주 BGM
 // ==========================================
 window.isWallMinigameActive = false;
 
 let wallGameGroup = null;
-let wallSubPhase = 'INTRO'; // 'INTRO' (3.2초 활주로 오프닝) | 'RUN' (연속 벽 돌진) | 'RESULT' (최종 순위)
+let wallSubPhase = 'INTRO'; // 'INTRO' (3.4초 활주로 오프닝) | 'RUN' (연속 벽 돌진) | 'RESULT' (최종 순위)
 let wallPhaseTimer = 0;
 let wallWaveTimer = 0;
 let wallQuestionQueue = [];
@@ -55,8 +55,7 @@ function createWallTextCanvas(text, bgColor) {
     ctx.textBaseline = 'middle';
     ctx.fillText(text, 256, 200);
 
-    const tex = new THREE.CanvasTexture(canvas);
-    return tex;
+    return new THREE.CanvasTexture(canvas);
 }
 
 function buildWallArena() {
@@ -70,7 +69,6 @@ function buildWallArena() {
     wallFragments = [];
     wallSceneryProps = [];
 
-    // 1. 에메랄드빛 바다 배경 (허공 느낌 제거)
     wallSeaMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(240, 240),
         new THREE.MeshStandardMaterial({ color: 0x38ada9, roughness: 0.35, metalness: 0.1 })
@@ -79,7 +77,6 @@ function buildWallArena() {
     wallSeaMesh.position.set(0, -14, -10);
     wallGameGroup.add(wallSeaMesh);
 
-    // 2. 좌우 둥둥 떠 있는 초록 하늘 섬 + 파스텔 나무 + 구름
     const islandSpots = [
         { x: -16, y: -1.5, z: -14, r: 5.5, treeColor: 0x2ed573 },
         { x: 16,  y: -1.0, z: -12, r: 5.8, treeColor: 0xffa502 },
@@ -132,7 +129,6 @@ function buildWallArena() {
         wallGameGroup.add(cl);
     });
 
-    // 3. 공중 스카이 다리 트랙 (폭 12, 길이 26: z = -16 ~ +10)
     const bridge = new THREE.Mesh(
         new THREE.BoxGeometry(12, 0.8, 26),
         new THREE.MeshStandardMaterial({ color: 0xf1f2f6, roughness: 0.65 })
@@ -141,7 +137,6 @@ function buildWallArena() {
     bridge.receiveShadow = true;
     wallGameGroup.add(bridge);
 
-    // 중앙 좌/우 구분 라인
     const centerLine = new THREE.Mesh(
         new THREE.BoxGeometry(0.18, 0.04, 26),
         new THREE.MeshBasicMaterial({ color: 0x3742fa })
@@ -149,7 +144,6 @@ function buildWallArena() {
     centerLine.position.set(0, 0.02, -3);
     wallGameGroup.add(centerLine);
 
-    // 좌우 안전 연석 + 스쳐 지나가는 깃발 가로등 기둥 (전진 속도감 연출)
     const flagColors = [0xff4757, 0xffd32a, 0x2ed573, 0x1e90ff];
     [-6.15, 6.15].forEach((bx, sideIdx) => {
         const curb = new THREE.Mesh(
@@ -186,7 +180,6 @@ function buildWallArena() {
         }
     });
 
-    // 4. 다리 앞 대형 문법 문제 전광판
     const boardFrame = new THREE.Mesh(
         new THREE.BoxGeometry(13.2, 4.4, 0.4),
         new THREE.MeshStandardMaterial({ color: 0x1e272e, roughness: 0.4 })
@@ -216,7 +209,6 @@ function buildWallArena() {
     boardScreen.position.set(0, 5.4, -16.58);
     wallGameGroup.add(boardScreen);
 
-    // 5. 좌/우 거대 돌진 벽 2개 생성
     const wallGeo = new THREE.BoxGeometry(5.8, 3.6, 0.85);
     leftWallMesh = new THREE.Mesh(wallGeo, new THREE.MeshStandardMaterial({ color: 0x3742fa, roughness: 0.4 }));
     rightWallMesh = new THREE.Mesh(wallGeo, new THREE.MeshStandardMaterial({ color: 0xff4757, roughness: 0.4 }));
@@ -284,9 +276,6 @@ function spawnWallDestructionFragments(centerX, centerZ, colorHex) {
     }
 }
 
-// ==========================================
-// 미니게임 2 진입 및 초기화
-// ==========================================
 window.enterGrammarWallMinigame = function(seedNum) {
     if (window.isWallMinigameActive) return;
     window.isWallMinigameActive = true;
@@ -294,8 +283,8 @@ window.enterGrammarWallMinigame = function(seedNum) {
     wallSubPhase = 'INTRO';
     wallPhaseTimer = 0;
     wallWaveTimer = 0;
+    window._wallReadyPlayed = false;
 
-    // 결정론적 시드 셔플로 모든 플레이어에게 동일한 6문제 출제
     const indices = GRAMMAR_WALL_QUESTIONS.map((_, i) => i);
     let s = Number(seedNum || 12345);
     for (let i = indices.length - 1; i > 0; i--) {
@@ -323,7 +312,7 @@ window.enterGrammarWallMinigame = function(seedNum) {
             m.name || '플레이어',
             wallGameGroup
         );
-        charObj.group.rotation.y = Math.PI; // 다리 앞쪽 전광판을 바라봄
+        charObj.group.rotation.y = Math.PI;
         wallPlayers[m.id] = {
             member: m,
             char: charObj,
@@ -356,7 +345,10 @@ window.enterGrammarWallMinigame = function(seedNum) {
     document.getElementById('wall-phase-banner').textContent = '🎬 OPENING: 전광판 문제를 보고 정답 벽으로 달려가세요!';
     document.getElementById('wall-timer-text').textContent = 'INTRO';
 
-    if (window.PartySound) window.PartySound.playSfx('intro_fanfare');
+    if (window.PartySound) {
+        window.PartySound.playSfx('intro_fanfare');
+        window.PartySound.startWallBGM();
+    }
 
     startNextWallWave(0);
     renderWallAliveBadges();
@@ -406,7 +398,6 @@ function renderWallAliveBadges() {
     });
 }
 
-// 좌클릭 밀치기 (문법 벽 돌파 전용)
 window.handleWallLocalShove = function() {
     if (!window.isWallMinigameActive || wallSubPhase !== 'RUN') return;
     const myId = window.myPlayerId || 'local';
@@ -488,7 +479,10 @@ window.onWallPlayersUpdated = function(playersState) {
 function finishWallMinigameResults() {
     if (wallSubPhase === 'RESULT') return;
     wallSubPhase = 'RESULT';
-    if (window.PartySound) window.PartySound.playSfx('win');
+    if (window.PartySound) {
+        window.PartySound.stopBGM();
+        window.PartySound.playSfx('win');
+    }
     document.getElementById('wall-phase-banner').textContent = '🏆 문법 벽 돌파 최종 결과!';
     document.getElementById('wall-timer-text').textContent = '0.0';
 
@@ -595,19 +589,16 @@ function finishWallMinigameToRoom() {
 window.exitWallMinigameToRoom = function() {
     window.hasPlayedFirstRound = true;
     window.isWallMinigameActive = false;
+    if (window.PartySound) window.PartySound.stopBGM();
     document.getElementById('wall-game-overlay').classList.add('hidden');
     if (wallGameGroup) wallGameGroup.visible = false;
     startPartySequence();
 };
 
-// ==========================================
-// 매 프레임 문법 벽 돌파 애니메이션 및 물리 렌더링
-// ==========================================
 window.updateAndRenderWallMinigame = function(dt, elapsed) {
     wallPhaseTimer += dt;
     wallWaveTimer += dt;
 
-    // 1. 배경 깃발 기둥 스크롤 (앞으로 달려나가는 속도감 연출)
     const scrollSpeed = wallSubPhase === 'RUN' ? 6.5 : 2.0;
     wallSceneryProps.forEach(prop => {
         prop.position.z += scrollSpeed * dt;
@@ -616,7 +607,6 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         }
     });
 
-    // 2. 파괴 파편 물리 업데이트
     for (let i = wallFragments.length - 1; i >= 0; i--) {
         const f = wallFragments[i];
         f.userData.life -= dt * 1.1;
@@ -632,25 +622,31 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         }
     }
 
-    // 3. 상태별 진행 (3.2초 시네마틱 활주로 오프닝 카메라 -> 연속 벽 돌진)
     if (wallSubPhase === 'INTRO') {
-        const introT = Math.min(1, wallPhaseTimer / 3.2);
+        const introT = Math.min(1, wallPhaseTimer / 3.4);
         camera.position.set(
             Math.sin((1 - introT) * 1.1) * 9.0,
             6.5 + introT * 3.1,
             -4.5 + introT * 21.3
         );
         camera.lookAt(0, 2.4, -2.5);
-        if (wallPhaseTimer >= 3.2) {
+        if (wallPhaseTimer >= 2.1 && !window._wallReadyPlayed) {
+            window._wallReadyPlayed = true;
+            document.getElementById('wall-phase-banner').textContent = '✨ READY...';
+            if (typeof window.showMinigameCountdown === 'function') window.showMinigameCountdown('READY...');
+            if (window.PartySound) window.PartySound.playSfx('ready');
+        }
+        if (wallPhaseTimer >= 3.4) {
+            window._wallReadyPlayed = false;
             wallSubPhase = 'RUN';
             wallWaveTimer = 0;
             document.getElementById('wall-phase-banner').textContent = '🧱 WAVE 1: 정답 벽 앞으로 이동! (좌클릭 밀치기!)';
+            if (typeof window.showMinigameCountdown === 'function') window.showMinigameCountdown('START! 🧱');
+            if (window.PartySound) window.PartySound.playSfx('start');
         }
         renderer.render(scene, camera);
         return;
     } else if (wallSubPhase === 'RUN') {
-        // 중반 판정 라인(z = 4.2) 이전까지는 정답/오답 모두 부서지지 않고 똑같이 밀어내어 미리 들이대는 꼼수 방지!
-        // 중반 이후에는 정답 벽이 부서지고, 벽 속도가 후반부로 갈수록 급가속됨!
         const revealZ = 4.2;
         const isRevealPointReached = currentWallZ >= revealZ;
         const baseWallSpeed = 4.2 + currentWallIdx * 0.45;
@@ -666,22 +662,18 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         const rem = Math.max(0, (10.5 - currentWallZ) / wallSpeed);
         document.getElementById('wall-timer-text').textContent = rem.toFixed(1);
 
-        // 중반 라인 통과 시 전광판 정답 공개
         if (isRevealPointReached && !leftWallShattered && !rightWallShattered) {
             drawWallQuestionBoard(qObj, true);
         }
 
-        // 벽이 플레이어를 스치거나 밀고 지나가는 실시간 충돌 판정
         const wallFrontZ = currentWallZ + 0.55;
         Object.values(wallPlayers).forEach(p => {
             if (!p.alive) return;
             const onLeftSide = p.x < 0;
             const inCorrectZone = (onLeftSide && isLeftCorrect) || (!onLeftSide && !isLeftCorrect);
 
-            // 벽 앞면이 캐릭터에 닿았을 때
             if (wallFrontZ >= p.z - 0.35 && currentWallZ - 0.55 <= p.z + 0.45) {
                 if (isRevealPointReached && inCorrectZone) {
-                    // 중반 이후 정답 벽: 산산조각 파편으로 부서지며 통과!
                     if (onLeftSide && !leftWallShattered) {
                         leftWallShattered = true;
                         leftWallMesh.visible = false;
@@ -694,8 +686,6 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
                         if (window.PartySound) window.PartySound.playSfx('wall_break');
                     }
                 } else {
-                    // 중반 이전에는 양쪽 벽 모두 밀어내고, 중반 이후에는 오답 벽만 끝까지 뒤로 밀어냄!
-                    // (단, 옆으로 움직여 정답 구역으로 도망치면 탈출 가능!)
                     p.beingPushedByWall = true;
                     p.z = Math.max(p.z, wallFrontZ + 0.15);
                 }
@@ -704,7 +694,6 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
             }
         });
 
-        // 벽이 트랙 뒤쪽 끝(z > 10.6)까지 완전히 지나가면 끊김 없이 즉시 다음 문제 벽 등장!
         if (currentWallZ > 10.6) {
             Object.values(wallPlayers).forEach(p => {
                 if (p.alive) {
@@ -724,14 +713,10 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         }
     }
 
-    // 4. 내 캐릭터 이동 & 밀치기 3D 애니메이션 & 추락 판정
     const myId = window.myPlayerId || 'local';
-    const me = wallPlayers[myId];
-
     Object.entries(wallPlayers).forEach(([pid, p]) => {
         if (pid === myId) {
             if (p.alive && wallSubPhase === 'RUN') {
-                // 오답 벽에 밀려나는 중에도 좌우(A/D, ◀/▶)로 움직여서 옆 정답 칸으로 빠져나갈 수 있음!
                 let moveX = 0, moveZ = 0;
                 if (keys.left) moveX -= 1;
                 if (keys.right) moveX += 1;
@@ -754,13 +739,13 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
                 p.vx *= Math.pow(0.05, dt);
                 p.vz *= Math.pow(0.05, dt);
 
-                // 다리 좌우 경계(-5.4 ~ 5.4), 앞쪽 경계(-12.5) 제한, 뒤쪽(z > 9.0)은 추락!
                 p.x = Math.max(-5.4, Math.min(5.4, p.x));
                 p.z = Math.max(-12.5, p.z);
 
                 if (p.z > 9.0) {
                     p.alive = false;
                     p.beingPushedByWall = false;
+                    if (window.PartySound) window.PartySound.playSfx('fall');
                     renderWallAliveBadges();
                 }
 
@@ -790,7 +775,6 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         p.char.group.position.set(p.x, p.y, p.z);
         p.char.group.rotation.y = p.rotY;
 
-        // 좌클릭 밀치기 모션(팔 뻗고 몸 숙이기) 및 걷기/추락 모션 업데이트
         if (p.char.isShoving) {
             p.char.shoveTimer -= dt;
             const progress = 1 - Math.max(0, p.char.shoveTimer / 0.34);
@@ -828,7 +812,6 @@ window.updateAndRenderWallMinigame = function(dt, elapsed) {
         }
     });
 
-    // 5. 공통 단일 시점 카메라 (전광판 + 돌진 벽 + 모든 플레이어 + 바다/섬 배경이 한눈에 보임)
     camera.position.lerp(new THREE.Vector3(0, 9.6, 16.8), 5 * dt);
     camera.lookAt(0, 2.4, -2.5);
 
