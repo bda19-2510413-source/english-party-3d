@@ -583,10 +583,19 @@ function syncPartyRoomCharacters() {
             roomCharacterMap[key] = charObj;
         }
         const charObj = roomCharacterMap[key];
-        charObj.group.position.set(seatX, 0.72, -2.3);
+        if (!charObj.isSeatedOnSofa) {
+            charObj.isSeatedOnSofa = true;
+            charObj.seatHopTimer = 0.45;
+        }
+        charObj.group.position.set(seatX, 0.72, -2.25);
         charObj.group.rotation.y = Math.PI;
-        charObj.leftLeg.rotation.x = -Math.PI / 2.2;
-        charObj.rightLeg.rotation.x = -Math.PI / 2.2;
+        // 다리를 앞으로 쭉 뻗고 발을 살짝 위로 든 귀여운 착석 자세
+        charObj.leftLeg.rotation.x = -Math.PI / 2;
+        charObj.rightLeg.rotation.x = -Math.PI / 2;
+        charObj.leftLeg.position.set(-0.26, 0.52, 0.28);
+        charObj.rightLeg.position.set(0.26, 0.52, 0.28);
+        // 고개를 들어 위쪽 대형 TV 모니터를 올려다보는 각도
+        charObj.headGroup.rotation.x = 0.28;
     });
 
     Object.keys(roomCharacterMap).forEach(key => {
@@ -1244,13 +1253,26 @@ function animate() {
         phaseTimer += dt;
 
         Object.values(roomCharacterMap).forEach((ch, idx) => {
-            ch.bodyPivot.position.y = Math.sin(elapsed * 4 + idx) * 0.04;
+            if (ch.seatHopTimer && ch.seatHopTimer > 0) {
+                ch.seatHopTimer = Math.max(0, ch.seatHopTimer - dt);
+                const hop = Math.sin((1 - ch.seatHopTimer / 0.45) * Math.PI) * 0.55;
+                ch.group.position.y = 0.72 + hop;
+            } else {
+                ch.group.position.y = 0.72;
+            }
+            ch.bodyPivot.position.y = Math.sin(elapsed * 4 + idx) * 0.035;
+            ch.headGroup.rotation.x = 0.28 + Math.sin(elapsed * 3.5 + idx) * 0.05;
+            ch.leftLeg.rotation.x = -Math.PI / 2 + Math.sin(elapsed * 5 + idx) * 0.12;
+            ch.rightLeg.rotation.x = -Math.PI / 2 - Math.sin(elapsed * 5 + idx) * 0.12;
+
             if (rouletteState === 'DONE') {
                 ch.leftArm.rotation.z = 2.4 + Math.sin(elapsed * 10 + idx) * 0.25;
                 ch.rightArm.rotation.z = -2.4 - Math.sin(elapsed * 10 + idx) * 0.25;
             } else {
-                ch.leftArm.rotation.z = 0.4;
-                ch.rightArm.rotation.z = -0.4;
+                ch.leftArm.rotation.z = 0.55;
+                ch.rightArm.rotation.z = -0.55;
+                ch.leftArm.rotation.x = -0.35;
+                ch.rightArm.rotation.x = -0.35;
             }
         });
 
@@ -1275,12 +1297,14 @@ function animate() {
             drawRouletteMonitor();
         }
 
-        if (phaseTimer < 2.2) {
-            camera.position.lerp(new THREE.Vector3(0, 3.0, 2.2), 4 * dt);
-            camera.lookAt(0, 1.35, -2.5);
+        if (phaseTimer < 1.5) {
+            // 처음 1.5초는 소파에 폴짝 앉는 모습을 정면 대각선에서 귀엽게 보여줌
+            camera.position.lerp(new THREE.Vector3(2.8, 2.3, 1.8), 4.5 * dt);
+            camera.lookAt(0, 1.35, -2.3);
         } else {
-            camera.position.lerp(new THREE.Vector3(0, 4.9, 6.2), 3.2 * dt);
-            camera.lookAt(0, 4.4, -5.8);
+            // 이후 소파에 앉은 팀원들과 대형 TV 모니터가 함께 보이는 구도
+            camera.position.lerp(new THREE.Vector3(0, 4.6, 6.8), 3.2 * dt);
+            camera.lookAt(0, 4.1, -5.8);
         }
     }
 
@@ -1288,7 +1312,7 @@ function animate() {
 }
 
 window.onload = function () {
-    console.log("11");
+    console.log("12");
     initScene();
     initCharacterSelectUI();
     setupControls();
