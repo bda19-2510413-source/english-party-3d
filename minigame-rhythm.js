@@ -1,17 +1,20 @@
-// ==========================================
-// 미니게임 3: 스타디움 리듬 스테이지 (RHYTHM STAGE) 독립 모듈
-// - 360도 돔 스타디움 3층 관중석 + 야광봉 흔드는 수백 명 관중 + 무대 스파크
-// - PartySoundEngine 드럼/베이스/멜로디 반주 & 시네마틱 오프닝 인트로
-// ==========================================
-window.isRhythmMinigameActive = false;
-
-let rhythmGameGroup = null;
-let rhythmSubPhase = 'INTRO'; // 'INTRO' (3.6초 시네마틱 오프닝) | 'PLAY' (리듬 타이핑) | 'RESULT' (최종 순위)
-let rhythmPhaseTimer = 0;
-let rhythmPlayTime = 0;
-
-let rhythmPlayers = {};
-let rhythmCrowd = [];
+// 글자 수(3~6글자) + 같은 글자 수 내에서도 박자 간격과 음높이가 다른 다채로운 리듬 패턴 은행
+const RHYTHM_WORD_PATTERNS = [
+    { word: 'CAT', ko: '고양이', style: '따! - 따! - 따!', beats: [0.0, 0.65, 1.30], pitches: [523.25, 659.25, 783.99] },
+    { word: 'SUN', ko: '태양',   style: '따-단! ... 따!', beats: [0.0, 0.34, 1.15], pitches: [587.33, 783.99, 880.00] },
+    { word: 'FLY', ko: '날다',   style: '따! ... 다-단!', beats: [0.0, 0.85, 1.22], pitches: [523.25, 698.46, 1046.50] },
+    { word: 'STAR', ko: '별',     style: '따-따-따-따!', beats: [0.0, 0.50, 1.00, 1.50], pitches: [523.25, 587.33, 659.25, 783.99] },
+    { word: 'JUMP', ko: '점프',   style: '따-단! ... 다-단!', beats: [0.0, 0.32, 0.98, 1.30], pitches: [523.25, 783.99, 659.25, 1046.50] },
+    { word: 'BEAT', ko: '박자',   style: '다-다-단! ... 따!', beats: [0.0, 0.30, 0.60, 1.35], pitches: [523.25, 587.33, 659.25, 880.00] },
+    { word: 'SONG', ko: '노래',   style: '따! ... 다-단! ... 따!', beats: [0.0, 0.68, 1.00, 1.68], pitches: [659.25, 587.33, 783.99, 1046.50] },
+    { word: 'DANCE', ko: '춤추다', style: '따-따! ... 다-다-단!', beats: [0.0, 0.45, 1.05, 1.35, 1.65], pitches: [523.25, 659.25, 587.33, 698.46, 880.00] },
+    { word: 'MUSIC', ko: '음악',   style: '다-다-다-다-단!', beats: [0.0, 0.34, 0.68, 1.02, 1.36], pitches: [523.25, 587.33, 659.25, 783.99, 1046.50] },
+    { word: 'SMILE', ko: '미소',   style: '따! ... 다-다-단! ... 따!', beats: [0.0, 0.62, 0.94, 1.26, 1.92], pitches: [587.33, 659.25, 783.99, 880.00, 1046.50] },
+    { word: 'PARTY', ko: '파티',   style: '따! ... 따! ... 다-다-다!', beats: [0.0, 0.62, 1.24, 1.54, 1.84], pitches: [523.25, 659.25, 783.99, 880.00, 1046.50] },
+    { word: 'RHYTHM', ko: '리듬',   style: '다-다-단! ... 다-다-단!', beats: [0.0, 0.30, 0.60, 1.25, 1.55, 1.85], pitches: [523.25, 659.25, 783.99, 587.33, 783.99, 1046.50] },
+    { word: 'MELODY', ko: '멜로디', style: '따-따-따! ... 다-다-단!', beats: [0.0, 0.48, 0.96, 1.52, 1.82, 2.12], pitches: [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50] },
+    { word: 'STAGE!', ko: '무대',   style: '다-다-다-단! ... 따-단!', beats: [0.0, 0.28, 0.56, 0.84, 1.48, 1.82], pitches: [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50] }
+];
 let rhythmSpotlights = [];
 let rhythmStageSparks = [];
 let rhythmMonitorCanvas = null, rhythmMonitorCtx = null, rhythmMonitorTexture = null;
@@ -370,11 +373,12 @@ function drawRhythmBigMonitor() {
 function setupRhythmWave(idx) {
     currentWaveIdx = idx;
     const base = rhythmWaveQueue[idx % rhythmWaveQueue.length];
-    const leadDelay = 1.35;
+    const leadDelay = 1.55;
     currentRhythmWave = {
         word: base.word,
         ko: base.ko,
         style: base.style,
+        pitches: base.pitches || [],
         beats: base.beats.map(b => b + leadDelay),
         cuedBeats: base.beats.map(() => false),
         startTime: rhythmPlayTime,
@@ -382,7 +386,12 @@ function setupRhythmWave(idx) {
         maxDuration: base.beats[base.beats.length - 1] + leadDelay + 1.25
     };
 
-    document.getElementById('rhythm-word-ko').textContent = `${base.ko} (${base.style})`;
+    // 단어가 나오자마자 고유 리듬 패턴(예: 따! ... 따! ... 다-다-다!)을 먼저 들려줌!
+    if (window.PartySound) {
+        window.PartySound.playRhythmPatternPreview(base.beats, base.pitches);
+    }
+
+    document.getElementById('rhythm-word-ko').textContent = `${base.ko} [${base.style}]`;
     document.getElementById('rhythm-stage-badge').textContent = `${idx + 1} / ${rhythmWaveQueue.length}곡`;
     renderRhythmWordSlots();
 }
@@ -454,10 +463,10 @@ function handleRhythmKeyInput(e) {
         } else {
             grade = 'AGAIN';
             addScore = 20;
-            myRhythmCombo = 0;
+        if (window.PartySound) {
+            const notePitch = currentRhythmWave.pitches ? currentRhythmWave.pitches[currentRhythmWave.typedCount] : null;
+            window.PartySound.playJudge(grade, myRhythmCombo, notePitch);
         }
-
-        if (window.PartySound) window.PartySound.playJudge(grade, myRhythmCombo);
 
         const comboBonus = myRhythmCombo >= 3 ? Math.min(40, myRhythmCombo * 5) : 0;
         myRhythmScore += addScore + comboBonus;
