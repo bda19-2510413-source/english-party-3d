@@ -184,6 +184,14 @@ window.syncWallPlayerState = function(code, stateObj) {
     });
 };
 
+window.syncRhythmPlayerState = function(code, stateObj) {
+    if (!db || !code) return;
+    update(ref(db, `rooms/${code}/minigameState/players/${myPlayerId}`), {
+        ...stateObj,
+        updatedAt: Date.now()
+    });
+};
+
 window.syncPlayerMinigameFinished = function(code) {
     if (!db || !code) return;
     update(ref(db, `rooms/${code}/minigameState/finishedPlayers`), {
@@ -266,12 +274,29 @@ function subscribeRoom(code) {
             if (typeof window.onMinigameFinishedPlayersUpdated === 'function') {
                 window.onMinigameFinishedPlayersUpdated(mg.finishedPlayers || {});
             }
+        } else if (data.minigameState && data.minigameState.type === 'RHYTHM_STAGE') {
+            const mg = data.minigameState;
+            if (mg.startId && mg.startId !== lastHandledMinigameStartId) {
+                lastHandledMinigameStartId = mg.startId;
+                if (typeof window.enterRhythmStageMinigame === 'function') {
+                    window.enterRhythmStageMinigame(mg.seed || mg.startedAt);
+                }
+            }
+            if (mg.players && typeof window.onRhythmPlayersUpdated === 'function') {
+                window.onRhythmPlayersUpdated(mg.players);
+            }
+            if (typeof window.onMinigameFinishedPlayersUpdated === 'function') {
+                window.onMinigameFinishedPlayersUpdated(mg.finishedPlayers || {});
+            }
         } else if (!data.minigameState) {
             if (window.isBombMinigameActive && typeof window.exitBombMinigameToRoom === 'function') {
                 window.exitBombMinigameToRoom();
             }
             if (window.isWallMinigameActive && typeof window.exitWallMinigameToRoom === 'function') {
                 window.exitWallMinigameToRoom();
+            }
+            if (window.isRhythmMinigameActive && typeof window.exitRhythmMinigameToRoom === 'function') {
+                window.exitRhythmMinigameToRoom();
             }
         }
     });
