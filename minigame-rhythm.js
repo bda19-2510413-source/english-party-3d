@@ -1,23 +1,20 @@
 // ==========================================
 // 미니게임 3: 스타디움 리듬 스테이지 (RHYTHM STAGE) 독립 모듈
-// - 공통 단일 콘서트 무대 + 야광봉 환호 관중 + 마이크 3D 모델
-// - 글자 수 및 박자 변형에 따라 달라지는 리듬 노트 & PERFECT / GOOD / AGAIN 판정
+// - 360도 돔 스타디움 3층 관중석 + 야광봉 흔드는 수백 명 관중 + 무대 스파크
+// - PartySoundEngine 드럼/베이스/멜로디 반주 & 시네마틱 오프닝 인트로
 // ==========================================
 window.isRhythmMinigameActive = false;
 
 let rhythmGameGroup = null;
-let rhythmSubPhase = 'INTRO'; // 'INTRO' (3.2초 스타디움 환호 인트로) | 'PLAY' (리듬 타이핑) | 'RESULT' (최종 순위)
+let rhythmSubPhase = 'INTRO'; // 'INTRO' (3.6초 시네마틱 오프닝) | 'PLAY' (리듬 타이핑) | 'RESULT' (최종 순위)
 let rhythmPhaseTimer = 0;
 let rhythmPlayTime = 0;
 
 let rhythmPlayers = {};
 let rhythmCrowd = [];
 let rhythmSpotlights = [];
+let rhythmStageSparks = [];
 let rhythmMonitorCanvas = null, rhythmMonitorCtx = null, rhythmMonitorTexture = null;
-
-// Web Audio 리듬 비트 & 효과음 컨텍스트
-let rhythmAudioCtx = null;
-let lastBeatIndex = -1;
 
 // 현재 출제 중인 단어 & 노트 시퀀스
 let rhythmWaveQueue = [];
@@ -27,53 +24,23 @@ let myRhythmScore = 0;
 let myRhythmCombo = 0;
 let lastRhythmSyncTime = 0;
 
-// 글자 수(3~7글자) + 같은 글자 수 내에서도 박자 간격이 다른 다채로운 리듬 패턴 은행
+// 글자 수(3~6글자) + 같은 글자 수 내에서도 박자 간격이 다른 다채로운 리듬 패턴 은행
 const RHYTHM_WORD_PATTERNS = [
-    // 3글자 (정박 vs 빠른 2연타+휴지 vs 엇박)
     { word: 'CAT', ko: '고양이', style: '정박 비트', beats: [0.0, 0.65, 1.30] },
     { word: 'SUN', ko: '태양',   style: '경쾌한 스윙', beats: [0.0, 0.42, 1.15] },
     { word: 'FLY', ko: '날다',   style: '당김음 엇박', beats: [0.0, 0.78, 1.22] },
-
-    // 4글자 (4비트 정박 vs 따-단 따-단 vs 3연타+마무리)
     { word: 'STAR', ko: '별',     style: '4비트 정박', beats: [0.0, 0.55, 1.10, 1.65] },
     { word: 'JUMP', ko: '점프',   style: '바운스 리듬', beats: [0.0, 0.38, 0.98, 1.36] },
     { word: 'BEAT', ko: '박자',   style: '3연타 피니시', beats: [0.0, 0.36, 0.72, 1.42] },
     { word: 'SONG', ko: '노래',   style: '싱코페이션', beats: [0.0, 0.68, 1.06, 1.68] },
-
-    // 5글자 (왈츠 스텝 vs 아이돌 훅 vs 엇박 콤보)
     { word: 'DANCE', ko: '춤추다', style: '아이돌 훅',   beats: [0.0, 0.45, 0.90, 1.25, 1.80] },
     { word: 'MUSIC', ko: '음악',   style: '스타카토 5연', beats: [0.0, 0.36, 0.72, 1.08, 1.44] },
     { word: 'SMILE', ko: '미소',   style: '리드미컬 웨이브', beats: [0.0, 0.60, 0.98, 1.36, 1.92] },
     { word: 'PARTY', ko: '파티',   style: '페스티벌 비트', beats: [0.0, 0.40, 1.00, 1.40, 1.80] },
-
-    // 6글자 (더블 스텝 vs 클라이맥스 연타)
     { word: 'RHYTHM', ko: '리듬',   style: '더블 타임',   beats: [0.0, 0.35, 0.70, 1.25, 1.60, 1.95] },
     { word: 'MELODY', ko: '멜로디', style: '물결 아르페지오', beats: [0.0, 0.48, 0.96, 1.32, 1.68, 2.15] },
     { word: 'STAGE!', ko: '무대',   style: '앙코르 피버', beats: [0.0, 0.32, 0.64, 0.96, 1.48, 1.96] }
 ];
-
-function playRhythmSynthTone(freq, duration = 0.12, type = 'triangle', gainVal = 0.12) {
-    try {
-        if (!rhythmAudioCtx) {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (AudioCtx) rhythmAudioCtx = new AudioCtx();
-        }
-        if (!rhythmAudioCtx) return;
-        if (rhythmAudioCtx.state === 'suspended') rhythmAudioCtx.resume();
-
-        const osc = rhythmAudioCtx.createOscillator();
-        const gain = rhythmAudioCtx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, rhythmAudioCtx.currentTime);
-        gain.gain.setValueAtTime(gainVal, rhythmAudioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, rhythmAudioCtx.currentTime + duration);
-
-        osc.connect(gain);
-        gain.connect(rhythmAudioCtx.destination);
-        osc.start();
-        osc.stop(rhythmAudioCtx.currentTime + duration);
-    } catch (e) {}
-}
 
 function attachMicrophoneToCharacter(charObj) {
     if (!charObj || !charObj.rightArm) return;
@@ -133,11 +100,12 @@ function buildRhythmStadiumStage() {
     }
     rhythmCrowd = [];
     rhythmSpotlights = [];
+    rhythmStageSparks = [];
 
     // 1. 스타디움 바닥 & 원형 콘서트 메인 무대
     const arenaFloor = new THREE.Mesh(
-        new THREE.CircleGeometry(48, 48),
-        new THREE.MeshStandardMaterial({ color: 0x1e272e, roughness: 0.8 })
+        new THREE.CircleGeometry(55, 48),
+        new THREE.MeshStandardMaterial({ color: 0x161c28, roughness: 0.8 })
     );
     arenaFloor.rotation.x = -Math.PI / 2;
     arenaFloor.position.y = -0.35;
@@ -151,7 +119,6 @@ function buildRhythmStadiumStage() {
     stageDeck.receiveShadow = true;
     rhythmGameGroup.add(stageDeck);
 
-    // 네온 무대 테두리 링
     const neonRing1 = new THREE.Mesh(
         new THREE.TorusGeometry(7.25, 0.12, 12, 48),
         new THREE.MeshBasicMaterial({ color: 0xff4757 })
@@ -167,7 +134,7 @@ function buildRhythmStadiumStage() {
     neonRing2.position.set(0, 0.36, -0.5);
     rhythmGameGroup.add(neonRing1, neonRing2);
 
-    // 2. 좌우 대형 콘서트 스피커 타워 & 트러스 조명 기둥
+    // 2. 좌우 대형 콘서트 스피커 타워
     [-8.6, 8.6].forEach((sx, sideIdx) => {
         const tower = new THREE.Group();
         tower.position.set(sx, 0, -2.5);
@@ -188,12 +155,12 @@ function buildRhythmStadiumStage() {
         rhythmGameGroup.add(tower);
     });
 
-    // 3. 무대 뒤 초대형 리듬 전광판 스크린
+    // 3. 무대 뒤 초대형 리듬 전광판 스크린 & 네온 스타디움 아치
     const screenFrame = new THREE.Mesh(
         new THREE.BoxGeometry(13.6, 5.2, 0.5),
         new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.3 })
     );
-    screenFrame.position.set(0, 5.4, -7.2);
+    screenFrame.position.set(0, 5.6, -7.2);
     rhythmGameGroup.add(screenFrame);
 
     rhythmMonitorCanvas = document.createElement('canvas');
@@ -206,10 +173,82 @@ function buildRhythmStadiumStage() {
         new THREE.PlaneGeometry(13.0, 4.7),
         new THREE.MeshBasicMaterial({ map: rhythmMonitorTexture })
     );
-    screenMesh.position.set(0, 5.4, -6.92);
+    screenMesh.position.set(0, 5.6, -6.92);
     rhythmGameGroup.add(screenMesh);
 
-    // 4. 무대 위 스포트라이트 빔
+    // 4. 360도 3층 계단식 돔 스타디움 관중석 (카메라 정면 뒤쪽 배경까지 꽉 채움!)
+    const standMat = new THREE.MeshStandardMaterial({ color: 0x1e272e, roughness: 0.85 });
+    const railMat = new THREE.MeshBasicMaterial({ color: 0x3742fa });
+    [
+        { rInner: 14.5, rOuter: 18.0, y: 1.2 },
+        { rInner: 18.0, rOuter: 21.8, y: 3.1 },
+        { rInner: 21.8, rOuter: 26.0, y: 5.2 }
+    ].forEach((tier, tIdx) => {
+        const tierMesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(tier.rOuter, tier.rInner, 1.9, 48, 1, true),
+            standMat
+        );
+        tierMesh.position.set(0, tier.y, -2.5);
+        const neonBand = new THREE.Mesh(
+            new THREE.TorusGeometry(tier.rInner + 0.1, 0.08, 8, 48),
+            railMat
+        );
+        neonBand.rotation.x = Math.PI / 2;
+        neonBand.position.set(0, tier.y - 0.85, -2.5);
+        rhythmGameGroup.add(tierMesh, neonBand);
+    });
+
+    // 5. 스탠드 1~3층과 앞쪽 객석 전체에서 야광봉을 흔들며 환호하는 관중들 (총 95명!)
+    const crowdColors = [0xff4757, 0x2ed573, 0x1e90ff, 0xffa502, 0x9c88ff, 0xff9ff3, 0x00d2d3];
+    for (let i = 0; i < 95; i++) {
+        // 전 방위(뒤쪽 스크린 좌우 + 상단 관중석 + 앞쪽 객석) 배치
+        const angle = (i / 95) * Math.PI * 2 + (Math.random() - 0.5) * 0.15;
+        // 모니터 바로 정면(-PI) 일부만 살짝 비워서 스크린이 가리지 않게 배치
+        const normAngle = Math.atan2(Math.sin(angle), Math.cos(angle));
+        if (Math.abs(normAngle - Math.PI) < 0.34 && i % 2 === 0) continue;
+
+        const tierPick = i % 3;
+        const dist = tierPick === 0 ? (11.5 + Math.random() * 2.5) : tierPick === 1 ? (16.2 + Math.random() * 1.4) : (20.0 + Math.random() * 1.5);
+        const baseY = tierPick === 0 ? -0.35 : tierPick === 1 ? 1.55 : 3.55;
+        const cx = Math.sin(angle) * dist;
+        const cz = -2.5 + Math.cos(angle) * dist;
+
+        const fanGroup = new THREE.Group();
+        fanGroup.position.set(cx, baseY, cz);
+        fanGroup.rotation.y = Math.atan2(-cx, -0.5 - cz);
+
+        const cHex = crowdColors[i % crowdColors.length];
+        const fanBody = new THREE.Mesh(
+            new THREE.SphereGeometry(0.46, 10, 10),
+            new THREE.MeshStandardMaterial({ color: cHex, roughness: 0.5 })
+        );
+        fanBody.position.y = 0.45;
+
+        const fanHead = new THREE.Mesh(
+            new THREE.SphereGeometry(0.36, 10, 10),
+            new THREE.MeshStandardMaterial({ color: cHex, roughness: 0.5 })
+        );
+        fanHead.position.y = 0.98;
+
+        const glowStick = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, 0.65, 8),
+            new THREE.MeshBasicMaterial({ color: crowdColors[(i + 3) % crowdColors.length] })
+        );
+        glowStick.position.set(0.38, 1.2, 0.15);
+        glowStick.rotation.z = -0.35;
+
+        fanGroup.add(fanBody, fanHead, glowStick);
+        rhythmGameGroup.add(fanGroup);
+        rhythmCrowd.push({
+            group: fanGroup,
+            stick: glowStick,
+            baseY,
+            phase: Math.random() * Math.PI * 2,
+            speed: 5.5 + Math.random() * 4.5
+        });
+    }
+
+    // 6. 무대 위 스포트라이트 빔
     [-4.2, 0, 4.2].forEach((lx, i) => {
         const colors = [0xff4757, 0xffd32a, 0x1e90ff];
         const beam = new THREE.Mesh(
@@ -226,50 +265,6 @@ function buildRhythmStadiumStage() {
         rhythmGameGroup.add(beam);
         rhythmSpotlights.push({ mesh: beam, baseX: lx, phase: i * 1.4 });
     });
-
-    // 5. 무대 앞 관중석에서 야광봉을 흔들며 환호하는 귀여운 젤리 관중들!
-    const crowdColors = [0xff4757, 0x2ed573, 0x1e90ff, 0xffa502, 0x9c88ff, 0xff9ff3, 0x00d2d3];
-    for (let i = 0; i < 42; i++) {
-        const angle = (Math.random() - 0.5) * Math.PI * 1.15;
-        const dist = 9.2 + Math.random() * 6.5;
-        const cx = Math.sin(angle) * dist;
-        const cz = Math.cos(angle) * dist - 0.5;
-        if (cz < 3.5) continue;
-
-        const fanGroup = new THREE.Group();
-        fanGroup.position.set(cx, -0.35, cz);
-        fanGroup.rotation.y = Math.atan2(-cx, -cz);
-
-        const cHex = crowdColors[i % crowdColors.length];
-        const fanBody = new THREE.Mesh(
-            new THREE.SphereGeometry(0.45, 12, 12),
-            new THREE.MeshStandardMaterial({ color: cHex, roughness: 0.5 })
-        );
-        fanBody.position.y = 0.45;
-
-        const fanHead = new THREE.Mesh(
-            new THREE.SphereGeometry(0.36, 12, 12),
-            new THREE.MeshStandardMaterial({ color: cHex, roughness: 0.5 })
-        );
-        fanHead.position.y = 0.98;
-
-        // 손에 든 야광봉
-        const glowStick = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.05, 0.05, 0.55, 8),
-            new THREE.MeshBasicMaterial({ color: crowdColors[(i + 2) % crowdColors.length] })
-        );
-        glowStick.position.set(0.38, 1.15, 0.15);
-        glowStick.rotation.z = -0.35;
-
-        fanGroup.add(fanBody, fanHead, glowStick);
-        rhythmGameGroup.add(fanGroup);
-        rhythmCrowd.push({
-            group: fanGroup,
-            stick: glowStick,
-            phase: Math.random() * Math.PI * 2,
-            speed: 5 + Math.random() * 4
-        });
-    }
 }
 
 function drawRhythmBigMonitor() {
@@ -280,12 +275,10 @@ function drawRhythmBigMonitor() {
     ctx.fillStyle = '#0f1526';
     ctx.fillRect(0, 0, W, H);
 
-    // 네온 테두리
     ctx.strokeStyle = '#ff4757';
     ctx.lineWidth = 10;
     ctx.strokeRect(10, 10, W - 20, H - 20);
 
-    // 배경 이퀄라이저 막대 애니메이션
     const barCount = 24;
     const barW = (W - 80) / barCount;
     for (let i = 0; i < barCount; i++) {
@@ -315,7 +308,6 @@ function drawRhythmBigMonitor() {
         ctx.font = 'bold 28px "Noto Sans KR", sans-serif';
         ctx.fillText(`뜻: ${wObj.ko}`, W / 2, 108);
 
-        // 각 글자 카드와 현재 입력된 글자 강조
         const letters = wObj.word.split('');
         const cardW = 105;
         const gap = 18;
@@ -339,7 +331,6 @@ function drawRhythmBigMonitor() {
             ctx.fillText(ch, cx + cardW / 2, cy + 78);
         });
 
-        // 모니터 하단 리듬 타이밍 바 시각화
         const barLeft = 110, barRight = W - 110, barY = 335;
         ctx.strokeStyle = 'rgba(255,255,255,0.35)';
         ctx.lineWidth = 8;
@@ -348,18 +339,17 @@ function drawRhythmBigMonitor() {
         ctx.lineTo(barRight, barY);
         ctx.stroke();
 
-        // 판정 타겟 링 (왼쪽 끝)
         ctx.fillStyle = '#ffd32a';
         ctx.beginPath();
         ctx.arc(barLeft, barY, 22, 0, Math.PI * 2);
         ctx.fill();
 
         const waveElapsed = rhythmPlayTime - wObj.startTime;
-        const leadTime = 1.35; // 노트가 오른쪽에서 판정선까지 다가오는 시간(초)
+        const leadTime = 1.35;
 
         wObj.beats.forEach((beatOffset, idx) => {
             if (idx < wObj.typedCount) return;
-            const timeDiff = beatOffset - waveElapsed; // 0이면 정타!
+            const timeDiff = beatOffset - waveElapsed;
             const ratio = timeDiff / leadTime;
             if (ratio >= -0.35 && ratio <= 1.25) {
                 const nx = barLeft + ratio * (barRight - barLeft);
@@ -380,15 +370,16 @@ function drawRhythmBigMonitor() {
 function setupRhythmWave(idx) {
     currentWaveIdx = idx;
     const base = rhythmWaveQueue[idx % rhythmWaveQueue.length];
-    const leadDelay = 1.25;
+    const leadDelay = 1.35;
     currentRhythmWave = {
         word: base.word,
         ko: base.ko,
         style: base.style,
         beats: base.beats.map(b => b + leadDelay),
+        cuedBeats: base.beats.map(() => false),
         startTime: rhythmPlayTime,
         typedCount: 0,
-        maxDuration: base.beats[base.beats.length - 1] + leadDelay + 1.15
+        maxDuration: base.beats[base.beats.length - 1] + leadDelay + 1.25
     };
 
     document.getElementById('rhythm-word-ko').textContent = `${base.ko} (${base.style})`;
@@ -420,7 +411,6 @@ function triggerPlayerDanceAction(playerObj, judgeGrade) {
     playerObj.danceStyle = (playerObj.danceStyle + 1) % 3;
     playerObj.char.jump();
 
-    // 머리 위 3D 판정 팝업(PERFECT / GOOD / AGAIN) 생성
     if (playerObj.judgeSprite) {
         rhythmGameGroup.remove(playerObj.judgeSprite);
     }
@@ -453,22 +443,21 @@ function handleRhythmKeyInput(e) {
 
         let grade = 'AGAIN';
         let addScore = 20;
-        if (diff <= 0.22) {
+        if (diff <= 0.24) {
             grade = 'PERFECT';
             addScore = 100;
             myRhythmCombo += 1;
-            playRhythmSynthTone(880, 0.14, 'triangle', 0.16);
-        } else if (diff <= 0.48) {
+        } else if (diff <= 0.50) {
             grade = 'GOOD';
             addScore = 60;
             myRhythmCombo += 1;
-            playRhythmSynthTone(659.25, 0.13, 'triangle', 0.13);
         } else {
             grade = 'AGAIN';
             addScore = 20;
             myRhythmCombo = 0;
-            playRhythmSynthTone(330, 0.12, 'sine', 0.1);
         }
+
+        if (window.PartySound) window.PartySound.playJudge(grade, myRhythmCombo);
 
         const comboBonus = myRhythmCombo >= 3 ? Math.min(40, myRhythmCombo * 5) : 0;
         myRhythmScore += addScore + comboBonus;
@@ -493,7 +482,6 @@ function handleRhythmKeyInput(e) {
             });
         }
 
-        // 단어의 모든 글자를 다 쳤으면 잠깐 박수 후 다음 곡(단어)으로 부드럽게 전환!
         if (currentRhythmWave.typedCount >= currentRhythmWave.word.length) {
             setTimeout(() => {
                 if (!window.isRhythmMinigameActive || rhythmSubPhase !== 'PLAY') return;
@@ -505,10 +493,9 @@ function handleRhythmKeyInput(e) {
             }, 260);
         }
     } else {
-        // 틀린 알파벳 입력 시 AGAIN 판정
         myRhythmCombo = 0;
         document.getElementById('rhythm-combo-text').textContent = 'AGAIN! 박자에 맞춰 입력!';
-        playRhythmSynthTone(220, 0.12, 'sawtooth', 0.08);
+        if (window.PartySound) window.PartySound.playJudge('AGAIN', 0);
         if (me) triggerPlayerDanceAction(me, 'AGAIN');
     }
 }
@@ -525,11 +512,14 @@ window.enterRhythmStageMinigame = function(seedNum) {
     rhythmSubPhase = 'INTRO';
     rhythmPhaseTimer = 0;
     rhythmPlayTime = 0;
-    lastBeatIndex = -1;
     myRhythmScore = 0;
     myRhythmCombo = 0;
 
-    // 시드 기반 8개 리듬 단어 시퀀스 구성
+    if (window.PartySound) {
+        window.PartySound.playSfx('intro_fanfare');
+        window.PartySound.startRhythmStageBGM(116);
+    }
+
     const indices = RHYTHM_WORD_PATTERNS.map((_, i) => i);
     let s = Number(seedNum || 54321);
     for (let i = indices.length - 1; i > 0; i--) {
@@ -557,7 +547,7 @@ window.enterRhythmStageMinigame = function(seedNum) {
             rhythmGameGroup
         );
         charObj.group.position.y = 0.35;
-        charObj.group.rotation.y = 0; // 관중석과 카메라 정면을 바라봄
+        charObj.group.rotation.y = 0;
         attachMicrophoneToCharacter(charObj);
 
         rhythmPlayers[m.id] = {
@@ -581,14 +571,14 @@ window.enterRhythmStageMinigame = function(seedNum) {
     rhythmGameGroup.visible = true;
 
     scene.background = new THREE.Color(0x0b0e1a);
-    scene.fog = new THREE.Fog(0x0b0e1a, 24, 75);
+    scene.fog = new THREE.Fog(0x0b0e1a, 28, 85);
 
     document.getElementById('party-room-hud').classList.add('hidden');
     document.getElementById('party-scoreboard-hud').classList.add('hidden');
     document.getElementById('rhythm-game-overlay').classList.remove('hidden');
     document.getElementById('rhythm-play-hud').classList.add('hidden');
     document.getElementById('rhythm-result-panel').classList.add('hidden');
-    document.getElementById('rhythm-phase-banner').textContent = '🎤 스타디움 무대 입장! 관중들이 환호합니다!';
+    document.getElementById('rhythm-phase-banner').textContent = '🎬 OPENING: 스타디움 콘서트 개막! 관중들이 열광합니다!';
     document.getElementById('rhythm-my-score').textContent = '0';
 
     drawRhythmBigMonitor();
@@ -626,6 +616,10 @@ window.onRhythmPlayersUpdated = function(playersState) {
 function finishRhythmMinigameResults() {
     if (rhythmSubPhase === 'RESULT') return;
     rhythmSubPhase = 'RESULT';
+    if (window.PartySound) {
+        window.PartySound.stopBGM();
+        window.PartySound.playSfx('win');
+    }
     document.getElementById('rhythm-play-hud').classList.add('hidden');
     document.getElementById('rhythm-phase-banner').textContent = '🏆 스타디움 리듬 공연 최종 결과!';
 
@@ -723,22 +717,23 @@ function finishRhythmMinigameToRoom() {
 window.exitRhythmMinigameToRoom = function() {
     window.hasPlayedFirstRound = true;
     window.isRhythmMinigameActive = false;
+    if (window.PartySound) window.PartySound.stopBGM();
     document.getElementById('rhythm-game-overlay').classList.add('hidden');
     if (rhythmGameGroup) rhythmGameGroup.visible = false;
     startPartySequence();
 };
 
 // ==========================================
-// 매 프레임 스타디움 관중 환호, 부드러운 아이돌 댄스 모션 & 리듬 트랙 렌더링
+// 매 프레임 스타디움 관중 환호, 시네마틱 오프닝 & 리듬 트랙 렌더링
 // ==========================================
 window.updateAndRenderRhythmMinigame = function(dt, elapsed) {
     rhythmPhaseTimer += dt;
     rhythmPlayTime += dt;
 
-    // 1. 관중석 야광봉 & 점프 환호 애니메이션
+    // 1. 360도 3층 관중석 야광봉 & 점프 환호 애니메이션
     rhythmCrowd.forEach(fan => {
         const jump = Math.abs(Math.sin(elapsed * fan.speed + fan.phase)) * 0.35;
-        fan.group.position.y = -0.35 + jump;
+        fan.group.position.y = fan.baseY + jump;
         fan.stick.rotation.z = Math.sin(elapsed * (fan.speed * 1.6) + fan.phase) * 0.55;
     });
 
@@ -747,7 +742,7 @@ window.updateAndRenderRhythmMinigame = function(dt, elapsed) {
         sp.mesh.rotation.z = Math.sin(elapsed * 1.8 + sp.phase) * 0.24;
     });
 
-    // 3. 무대 위 플레이어들 기본 리듬 스텝 + 콤보 댄스 모션 (부드러운 보간)
+    // 3. 무대 위 플레이어들 기본 리듬 스텝 + 콤보 댄스 모션
     Object.values(rhythmPlayers).forEach((p, idx) => {
         const beatBounce = Math.abs(Math.sin(elapsed * 6.5 + idx * 0.7));
         p.char.bodyPivot.position.y = beatBounce * 0.1;
@@ -758,17 +753,14 @@ window.updateAndRenderRhythmMinigame = function(dt, elapsed) {
             const wave = Math.sin(prog * Math.PI);
 
             if (p.danceStyle === 0) {
-                // 스타일 1: 360도 아이돌 스핀 + 점프
                 p.char.group.rotation.y = prog * Math.PI * 2;
                 p.char.group.position.y = 0.35 + wave * 0.85;
             } else if (p.danceStyle === 1) {
-                // 스타일 2: 양팔 크게 흔들며 좌우 스텝
                 p.char.leftArm.rotation.z = 0.4 + wave * 2.1;
                 p.char.rightArm.rotation.z = -0.4 - wave * 2.1;
                 p.char.bodyPivot.rotation.z = Math.sin(prog * Math.PI * 2) * 0.28;
                 p.char.group.position.y = 0.35 + wave * 0.45;
             } else {
-                // 스타일 3: 마이크 앞으로 내밀며 리듬 바운스
                 p.char.rightArm.rotation.x = -wave * 1.25;
                 p.char.leftArm.rotation.z = 0.4 + wave * 1.4;
                 p.char.bodyPivot.rotation.x = wave * 0.22;
@@ -785,13 +777,11 @@ window.updateAndRenderRhythmMinigame = function(dt, elapsed) {
                 p.char.bodyPivot.rotation.x = 0;
             }
         } else {
-            // 대기 중에도 리듬에 맞춰 부드럽게 고개와 몸을 까딱거림
             p.char.group.position.y = 0.35;
             p.char.bodyPivot.rotation.z = Math.sin(elapsed * 3.25 + idx) * 0.08;
             p.char.headGroup.rotation.z = -Math.sin(elapsed * 3.25 + idx) * 0.1;
         }
 
-        // 머리 위 판정 스프라이트 상승 & 페이드아웃
         if (p.judgeSprite && p.judgeLife > 0) {
             p.judgeLife -= dt;
             p.judgeSprite.position.y += 1.35 * dt;
@@ -803,28 +793,25 @@ window.updateAndRenderRhythmMinigame = function(dt, elapsed) {
         }
     });
 
-    // 4. 단계별 진행
+    // 4. 단계별 진행 (3.6초 시네마틱 스타디움 오프닝 카메라 -> 플레이)
     if (rhythmSubPhase === 'INTRO') {
-        if (rhythmPhaseTimer >= 3.2) {
+        const camT = Math.min(1, rhythmPhaseTimer / 3.6);
+        const orbitAngle = (1 - camT) * 0.85;
+        camera.position.set(
+            Math.sin(orbitAngle) * (13.5 - camT * 3.2),
+            7.8 - camT * 2.8,
+            Math.cos(orbitAngle) * (13.5 - camT * 3.2)
+        );
+        camera.lookAt(0, 2.4 + camT * 0.5, -2.2);
+
+        if (rhythmPhaseTimer >= 3.6) {
             rhythmSubPhase = 'PLAY';
             rhythmPhaseTimer = 0;
             document.getElementById('rhythm-phase-banner').textContent = '🎶 리듬에 맞춰 영단어를 타이핑하세요!';
             document.getElementById('rhythm-play-hud').classList.remove('hidden');
             setupRhythmWave(0);
         }
-        // 인트로 카메라: 스타디움 전체와 환호하는 관중에서 무대 위 아이돌들로 부드럽게 줌인!
-        const camT = Math.min(1, rhythmPhaseTimer / 3.2);
-        camera.position.set(0, 6.2 - camT * 2.1, 13.5 - camT * 4.2);
-        camera.lookAt(0, 2.6 + camT * 0.5, -2.5);
     } else if (rhythmSubPhase === 'PLAY') {
-        // 메트로놈 배경 비트음 (0.55초 간격)
-        const beatIdx = Math.floor(rhythmPlayTime / 0.55);
-        if (beatIdx !== lastBeatIndex) {
-            lastBeatIndex = beatIdx;
-            playRhythmSynthTone(beatIdx % 4 === 0 ? 196 : 146.83, 0.08, 'sine', 0.06);
-        }
-
-        // 하단 HTML 리듬 노트 트랙 갱신
         if (currentRhythmWave) {
             const waveElapsed = rhythmPlayTime - currentRhythmWave.startTime;
             const trackEl = document.getElementById('rhythm-note-track');
@@ -832,6 +819,11 @@ window.updateAndRenderRhythmMinigame = function(dt, elapsed) {
                 trackEl.innerHTML = '';
                 const leadTime = 1.35;
                 currentRhythmWave.beats.forEach((bTime, idx) => {
+                    // 각 노트 타이밍에 맞춰 가이드 벨소리 울림
+                    if (!currentRhythmWave.cuedBeats[idx] && waveElapsed >= bTime) {
+                        currentRhythmWave.cuedBeats[idx] = true;
+                        if (window.PartySound) window.PartySound.playNoteGuideCue(idx);
+                    }
                     if (idx < currentRhythmWave.typedCount) return;
                     const diff = bTime - waveElapsed;
                     const pct = (diff / leadTime) * 100;
@@ -848,7 +840,6 @@ window.updateAndRenderRhythmMinigame = function(dt, elapsed) {
                 });
             }
 
-            // 제한 시간 초과 시 자동으로 다음 단어 전환
             if (waveElapsed >= currentRhythmWave.maxDuration) {
                 if (currentWaveIdx + 1 >= rhythmWaveQueue.length) {
                     finishRhythmMinigameResults();
@@ -858,8 +849,9 @@ window.updateAndRenderRhythmMinigame = function(dt, elapsed) {
             }
         }
 
-        camera.position.lerp(new THREE.Vector3(0, 4.1, 9.3), 4 * dt);
-        camera.lookAt(0, 3.1, -2.5);
+        // 하단 타이핑 HUD 위에 캐릭터 전신과 3층 스타디움 관중석이 함께 잘 보이도록 카메라 배치
+        camera.position.lerp(new THREE.Vector3(0, 5.1, 10.6), 4 * dt);
+        camera.lookAt(0, 2.7, -2.5);
     }
 
     drawRhythmBigMonitor();
