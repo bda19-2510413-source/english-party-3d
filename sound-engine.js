@@ -124,11 +124,10 @@ class PartySoundEngine {
 
         const tick = () => {
             const s = this.step % 8;
-            if (s === 0 || s === 4 || s === 5) this.playKick();
-            if (s === 2 || s === 6) this.playSnare();
-            this.playHiHat();
+            if (s === 0 || s === 4) this.playTone(65, 0.12, 'sine', 0.11);
+            if (s === 2 || s === 6) this.playHiHat();
             if (s % 2 === 0) {
-                this.playTone(bassNotes[s], 0.18, 'triangle', 0.11);
+                this.playTone(bassNotes[s], 0.16, 'triangle', 0.055);
             }
             this.step++;
         };
@@ -143,20 +142,35 @@ class PartySoundEngine {
         }
     }
 
-    // 리듬 노트 예고음 (노트가 판정선에 다가올 때 박자 감각을 들려줌)
-    playNoteGuideCue(noteIndex = 0) {
+    // 단어 고유 리듬 패턴(예: 따! ... 따! ... 다-다-다!)을 먼저 들려주는 리듬 천국 스타일 가이드
+    playRhythmPatternPreview(beatsArray, pitchesArray) {
+        const ctx = this.ensureContext();
+        if (!ctx || !Array.isArray(beatsArray)) return;
+        const defaultPitches = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50];
+        beatsArray.forEach((offsetSec, idx) => {
+            const freq = (pitchesArray && pitchesArray[idx]) ? pitchesArray[idx] : defaultPitches[idx % defaultPitches.length];
+            // 또렷한 실로폰/브라스 2중 톤으로 리듬 간격을 명확히 각인시킴
+            this.playTone(freq, 0.11, 'triangle', 0.22, offsetSec);
+            this.playTone(freq * 2, 0.07, 'sine', 0.09, offsetSec);
+        });
+    }
+
+    // 리듬 노트 예고음 (노트가 판정선에 닿는 정박 타이밍 가이드 틱)
+    playNoteGuideCue(noteIndex = 0, customPitch = null) {
         const scale = [523.25, 587.33, 659.25, 698.46, 783.99, 880.00];
-        this.playTone(scale[noteIndex % scale.length], 0.09, 'sine', 0.09);
+        const freq = customPitch || scale[noteIndex % scale.length];
+        this.playTone(freq, 0.08, 'sine', 0.07);
     }
 
     // 판정별 사운드
-    playJudge(grade, combo = 1) {
+    playJudge(grade, combo = 1, customPitch = null) {
         if (grade === 'PERFECT') {
-            const pitchBoost = Math.min(200, combo * 15);
-            this.playTone(783.99 + pitchBoost, 0.12, 'triangle', 0.18, 0);
-            this.playTone(1046.50 + pitchBoost, 0.18, 'sine', 0.16, 0.05);
+            const baseFreq = customPitch || (783.99 + Math.min(200, combo * 15));
+            this.playTone(baseFreq, 0.13, 'triangle', 0.22, 0);
+            this.playTone(baseFreq * 1.25, 0.18, 'sine', 0.18, 0.04);
         } else if (grade === 'GOOD') {
-            this.playTone(659.25, 0.14, 'triangle', 0.15, 0);
+            const baseFreq = customPitch || 659.25;
+            this.playTone(baseFreq, 0.14, 'triangle', 0.17, 0);
         } else {
             this.playTone(220, 0.16, 'sawtooth', 0.09, 0);
         }
