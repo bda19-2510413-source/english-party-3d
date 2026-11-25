@@ -76,6 +76,35 @@
     </div>
 
     <!-- ========================================== -->
+    <!-- 최종 시상대 (PODIUM CEREMONY) 오버레이 HUD -->
+    <!-- ========================================== -->
+    <div id="award-ceremony-overlay" class="hidden fixed inset-0 z-50 pointer-events-none flex flex-col justify-between p-4 md:p-6">
+        <div class="flex flex-col items-center">
+            <div class="glass-panel rounded-full px-7 py-2.5 flex items-center gap-3 shadow-2xl border-4 border-amber-400">
+                <span class="text-2xl md:text-3xl">👑</span>
+                <span id="award-champion-banner" class="font-black text-slate-900 text-base md:text-xl">최종 시상식! 축하합니다!</span>
+            </div>
+        </div>
+
+        <div class="mx-auto mb-3 pointer-events-auto flex flex-col items-center gap-2">
+            <div id="award-host-controls" class="hidden flex flex-wrap items-center justify-center gap-3">
+                <button type="button" onclick="restartSameParty()" class="jelly-btn bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-black text-sm md:text-base px-6 py-3 rounded-full shadow-2xl border-2 border-white">
+                    같은 파티로 한 번 더! 🔄
+                </button>
+                <button type="button" onclick="leaveAwardToLobby()" class="jelly-btn bg-slate-800 hover:bg-slate-700 text-white font-black text-sm md:text-base px-6 py-3 rounded-full shadow-2xl border-2 border-white/60">
+                    로비로 🏠
+                </button>
+            </div>
+            <div id="award-guest-controls" class="hidden glass-panel rounded-full px-5 py-2.5 flex items-center gap-3 shadow-xl">
+                <span class="text-xs md:text-sm font-black text-slate-700">👑 방장이 다음 행동을 선택하는 중...</span>
+                <button type="button" onclick="leaveAwardToLobby()" class="jelly-btn bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs px-4 py-1.5 rounded-full">
+                    로비로 🏠
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
     <div id="bomb-game-overlay" class="hidden fixed inset-0 z-50 pointer-events-none flex flex-col justify-between">
         <!-- 분할 화면 경계선 & 플레이어 이름/점수 배지 컨테이너 -->
         <div id="bomb-split-labels" class="fixed inset-0 pointer-events-none"></div>
