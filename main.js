@@ -40,9 +40,9 @@ let tvCanvas, tvCtx, tvTexture;
 const ROULETTE_GAMES = [
     { id: 'BOMB_DEFUSAL', title: 'BOMB DEFUSAL', subtitle: '30초 폭탄 해체 영단어 타이핑!', color: '#ff4757', icon: '💣' },
     { id: 'GRAMMAR_WALL', title: 'GRAMMAR WALL', subtitle: '영어 문법 정답 벽을 찾아 돌파하라!', color: '#3742fa', icon: '🧱' },
+    { id: 'RHYTHM_STAGE', title: 'RHYTHM STAGE', subtitle: '스타디움 무대에서 리듬 맞춰 단어 타이핑!', color: '#ffa502', icon: '🎤' },
     { id: 'WORD_SCRAMBLE', title: 'WORD SCRAMBLE', subtitle: '뒤섞인 알파벳 블록 맞추기!', color: '#2ed573', icon: '🔤' },
-    { id: 'SENTENCE_BUILDER', title: 'SENTENCE BUILDER', subtitle: '영어 문장 순서 조립하기!', color: '#ffa502', icon: '🧩' },
-    { id: 'MYSTERY_QA', title: 'MYSTERY 20 Q&A', subtitle: '스무고개 영어 힌트 추리!', color: '#9c88ff', icon: '🕵️' },
+    { id: 'SENTENCE_BUILDER', title: 'SENTENCE BUILDER', subtitle: '영어 문장 순서 조립하기!', color: '#9c88ff', icon: '🧩' },
     { id: 'LISTENING_MATCH', title: 'LISTENING MATCH', subtitle: '발음 듣고 그림 카드 찾기!', color: '#1e90ff', icon: '🎧' }
 ];
 let rouletteOffset = 0;
@@ -521,7 +521,7 @@ function handleLocalLobbyShove() {
 window.onRoomMembersUpdated = function() {
     updateMonitorCanvas();
     renderPartyScoreboard();
-    if (gamePhase !== 'LOBBY' && gamePhase !== 'MINIGAME_BOMB' && gamePhase !== 'MINIGAME_WALL') {
+    if (gamePhase !== 'LOBBY' && gamePhase !== 'MINIGAME_BOMB' && gamePhase !== 'MINIGAME_WALL' && gamePhase !== 'MINIGAME_RHYTHM') {
         syncSofaCharacters();
     }
 };
@@ -535,7 +535,7 @@ window.onMinigameFinishedPlayersUpdated = function(finishedMap) {
     const allDone = members.every(m => Boolean(finishedMap[m.id]));
     const doneCount = members.filter(m => Boolean(finishedMap[m.id])).length;
 
-    ['bomb-next-round-btn', 'wall-next-round-btn'].forEach(btnId => {
+    ['bomb-next-round-btn', 'wall-next-round-btn', 'rhythm-next-round-btn'].forEach(btnId => {
         const btn = document.getElementById(btnId);
         if (!btn) return;
         if (allDone) {
@@ -691,8 +691,8 @@ function startPartySequence() {
 
 function triggerRouletteSpin() {
     if (window.currentRoomInfo && window.currentRoomInfo.role !== 'HOST') return;
-    // 구현 완료된 미니게임(0: 폭탄 해체하기, 1: 문법 벽 돌파) 중 매 라운드 완전 랜덤 추첨!
-    const implementedGameIndices = [0, 1];
+    // 구현 완료된 미니게임(0: 폭탄 해체하기, 1: 문법 벽 돌파, 2: 스타디움 리듬 스테이지) 중 랜덤 추첨!
+    const implementedGameIndices = [0, 1, 2];
     const targetIdx = implementedGameIndices[Math.floor(Math.random() * implementedGameIndices.length)];
     beginRouletteAnimation(targetIdx);
 
@@ -709,7 +709,9 @@ function triggerStartSelectedMinigame() {
     if (window.syncStartMinigame && window.currentRoomInfo) {
         window.syncStartMinigame(window.currentRoomInfo.code, chosenId);
     }
-    if (chosenId === 'GRAMMAR_WALL' && typeof window.enterGrammarWallMinigame === 'function') {
+    if (chosenId === 'RHYTHM_STAGE' && typeof window.enterRhythmStageMinigame === 'function') {
+        window.enterRhythmStageMinigame(seedVal);
+    } else if (chosenId === 'GRAMMAR_WALL' && typeof window.enterGrammarWallMinigame === 'function') {
         window.enterGrammarWallMinigame(seedVal);
     } else if (typeof window.enterBombDefusalMinigame === 'function') {
         window.enterBombDefusalMinigame();
@@ -722,13 +724,16 @@ window.startRemoteRouletteSpin = function(targetIdx) {
 
 function beginRouletteAnimation(targetIdx) {
     // 혹시 미니게임 화면이 남아있는 상태였다면 안전하게 파티 룸 상태로 전환
-    if (window.isBombMinigameActive || window.isWallMinigameActive) {
+    if (window.isBombMinigameActive || window.isWallMinigameActive || window.isRhythmMinigameActive) {
         window.isBombMinigameActive = false;
         window.isWallMinigameActive = false;
+        window.isRhythmMinigameActive = false;
         document.getElementById('bomb-game-overlay').classList.add('hidden');
         document.getElementById('wall-game-overlay').classList.add('hidden');
+        document.getElementById('rhythm-game-overlay').classList.add('hidden');
         if (bombGameGroup) bombGameGroup.visible = false;
         if (typeof wallGameGroup !== 'undefined' && wallGameGroup) wallGameGroup.visible = false;
+        if (typeof rhythmGameGroup !== 'undefined' && rhythmGameGroup) rhythmGameGroup.visible = false;
         partyRoomGroup.visible = true;
         document.getElementById('party-room-hud').classList.remove('hidden');
         document.getElementById('party-scoreboard-hud').classList.remove('hidden');
@@ -896,6 +901,12 @@ function animate() {
         return;
     }
 
+    // 미니게임 3: 스타디움 리듬 스테이지 독립 모듈 렌더링
+    if (gamePhase === 'MINIGAME_RHYTHM' && typeof window.updateAndRenderRhythmMinigame === 'function') {
+        window.updateAndRenderRhythmMinigame(dt, elapsed);
+        return;
+    }
+
     Object.values(remoteLobbyPlayers).forEach((remote) => {
         const g = remote.char.group;
         const prevX = g.position.x;
@@ -1026,7 +1037,7 @@ function animate() {
 }
 
 window.onload = function () {
-    console.log("6");
+    console.log("7");
     initScene();
     initCharacterSelectorUI();
     setupEvents();
