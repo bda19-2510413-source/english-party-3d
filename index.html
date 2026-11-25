@@ -51,17 +51,17 @@
     </div>
 
     <!-- 파티 룸(소파 & 모니터 룰렛) 진행 HUD -->
-    <div id="party-room-hud" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 glass-panel rounded-full px-6 py-3 flex items-center gap-3 md:gap-4 shadow-2xl">
-        <span id="party-round-badge" class="bg-indigo-600 text-white font-black text-xs px-3 py-1 rounded-full">1 / 5판</span>
-        <button id="copy-room-code-btn" type="button" onclick="copyRoomCodeToClipboard()" class="jelly-btn bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-black text-xs px-3 py-1 rounded-full">📋 코드 복사</button>
-        <span id="party-status-text" class="font-black text-slate-800 text-sm md:text-base">🛋️ 소파에 자리 잡는 중...</span>
-        <button id="spin-roulette-btn" type="button" onclick="triggerRouletteSpin()" class="hidden jelly-btn bg-amber-500 hover:bg-amber-400 text-white font-black text-xs md:text-sm px-5 py-2 rounded-full shadow-lg">
+    <div id="party-room-hud" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 glass-panel rounded-full px-5 py-2.5 flex items-center gap-2.5 md:gap-3.5 shadow-2xl max-w-[95vw]">
+        <span id="party-round-badge" class="bg-indigo-600 text-white font-black text-xs px-3 py-1.5 rounded-full whitespace-nowrap">1 / 5판</span>
+        <button id="copy-room-code-btn" type="button" onclick="copyRoomCodeToClipboard()" class="jelly-btn bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-black text-xs px-3 py-1.5 rounded-full whitespace-nowrap">📋 코드 복사</button>
+        <span id="party-status-text" class="font-black text-slate-800 text-xs md:text-sm whitespace-nowrap">🛋️ 소파에 자리 잡는 중...</span>
+        <button id="spin-roulette-btn" type="button" onclick="triggerRouletteSpin()" class="hidden jelly-btn bg-amber-500 hover:bg-amber-400 text-white font-black text-xs md:text-sm px-5 py-2 rounded-full shadow-lg whitespace-nowrap">
             룰렛 돌리기! 🎰
         </button>
-        <button id="start-minigame-btn" type="button" onclick="triggerStartSelectedMinigame()" class="hidden jelly-btn bg-rose-600 hover:bg-rose-500 text-white font-black text-xs md:text-sm px-5 py-2 rounded-full shadow-lg animate-bounce">
+        <button id="start-minigame-btn" type="button" onclick="triggerStartSelectedMinigame()" class="hidden jelly-btn bg-rose-600 hover:bg-rose-500 text-white font-black text-xs md:text-sm px-5 py-2 rounded-full shadow-lg animate-bounce whitespace-nowrap">
             미니게임 시작! 💣
         </button>
-        <button id="return-lobby-btn" type="button" onclick="returnToLobby()" class="jelly-btn bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs md:text-sm px-4 py-2 rounded-full shadow">
+        <button id="return-lobby-btn" type="button" onclick="returnToLobby()" class="jelly-btn bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs md:text-sm px-4 py-2 rounded-full shadow whitespace-nowrap">
             로비로 복귀
         </button>
     </div>
