@@ -1,8 +1,9 @@
 // ==========================================
 // 미니게임 1: 폭탄 해체하기 (BOMB DEFUSAL) 독립 모듈
+// - 3.3초 시네마틱 오프닝 + READY / START! + 긴박한 시한폭탄 BGM & 효과음
 // ==========================================
 window.isBombMinigameActive = false;
-let bombSubPhase = 'INTRO'; // 'INTRO' (3초 묶임 연출) | 'PLAY' (30초 타이핑) | 'RESULT' (1등 환호/폭발)
+let bombSubPhase = 'INTRO'; // 'INTRO' (3.3초 묶임 연출) | 'PLAY' (30초 타이핑) | 'RESULT' (1등 환호/폭발)
 let bombPhaseElapsed = 0;
 let bombStages = [];
 let bombScoreMap = {};
@@ -30,7 +31,6 @@ const BOMB_WORD_BANK = [
     { en: 'MOUNTAIN', ko: '산' }, { en: 'VICTORY', ko: '승리' }, { en: 'DEFUSE', ko: '해체하다' }
 ];
 
-// 플레이어별 3D 폭탄 해체 무대 생성
 function createBombStageForMember(member, slotIndex) {
     const stageGroup = new THREE.Group();
     const baseX = slotIndex * 30;
@@ -70,7 +70,6 @@ function createBombStageForMember(member, slotIndex) {
     );
     charObj.group.rotation.y = 0.25;
 
-    // 밧줄 메쉬
     const ropeGroup = new THREE.Group();
     const ropeMat = new THREE.MeshStandardMaterial({ color: 0xd4a373, roughness: 0.9 });
     [0.58, 0.82, 1.06].forEach((ry, idx) => {
@@ -81,7 +80,6 @@ function createBombStageForMember(member, slotIndex) {
     });
     charObj.bodyPivot.add(ropeGroup);
 
-    // 대형 시한폭탄
     const bombGroup = new THREE.Group();
     bombGroup.position.set(0.95, 0, 0.35);
 
@@ -113,7 +111,6 @@ function createBombStageForMember(member, slotIndex) {
     bombGroup.add(bombSphere, bombCap, bombLed, spark);
     stageGroup.add(bombGroup);
 
-    // 폭발 파티클
     const explosionMesh = new THREE.Mesh(
         new THREE.SphereGeometry(0.5, 20, 20),
         new THREE.MeshBasicMaterial({ color: 0xff6b35, transparent: true, opacity: 0.95 })
@@ -140,7 +137,6 @@ function createBombStageForMember(member, slotIndex) {
     };
 }
 
-// 미니게임 입장 및 초기화
 window.enterBombDefusalMinigame = function() {
     if (window.isBombMinigameActive) return;
     window.isBombMinigameActive = true;
@@ -149,6 +145,7 @@ window.enterBombDefusalMinigame = function() {
     bombPhaseElapsed = 0;
     myBombScore = 0;
     bombScoreMap = {};
+    window._bombReadyPlayed = false;
 
     if (!bombGameGroup) {
         bombGameGroup = new THREE.Group();
@@ -184,7 +181,10 @@ window.enterBombDefusalMinigame = function() {
     document.getElementById('bomb-timer-text').textContent = '30.0';
     document.getElementById('bomb-my-score').textContent = '0';
 
-    if (window.PartySound) window.PartySound.playSfx('intro_fanfare');
+    if (window.PartySound) {
+        window.PartySound.playSfx('intro_fanfare');
+        window.PartySound.startBombBGM();
+    }
 
     renderBombSplitLabels();
     pickNextBombWord();
@@ -232,7 +232,6 @@ function pickNextBombWord() {
     document.getElementById('bomb-target-word').textContent = next.en;
     const inp = document.getElementById('bomb-word-input');
     if (inp) {
-        // 입력기(IME) 조합 버퍼를 완전히 비우기 위해 blur 후 초기화 및 재포커스
         inp.blur();
         inp.value = '';
         setTimeout(() => {
@@ -257,7 +256,6 @@ function checkBombWordMatch(rawVal) {
         const myId = window.myPlayerId || 'local';
         bombScoreMap[myId] = myBombScore;
 
-        // 내 스테이지 찾기 (ID 일치 또는 index 0 fallback)
         const myStage = bombStages.find(s => s.member.id === myId) || bombStages[0];
         if (myStage) {
             myStage.score = myBombScore;
@@ -301,13 +299,15 @@ window.onBombScoresUpdated = function(scoresObj) {
 function evaluateBombDefusalResults() {
     bombSubPhase = 'RESULT';
     bombPhaseElapsed = 0;
+    if (window.PartySound) {
+        window.PartySound.stopBGM();
+        window.PartySound.playSfx('explosion');
+        setTimeout(() => { if (window.PartySound) window.PartySound.playSfx('win'); }, 350);
+    }
     document.getElementById('bomb-typing-panel').classList.add('hidden');
     document.getElementById('bomb-phase-banner').textContent = '💥 시간 종료! 1등만 탈출 성공!';
 
     const sorted = [...bombStages].sort((a, b) => b.score - a.score);
-    const topScore = sorted[0] ? sorted[0].score : 0;
-
-    // 등수별 포인트 테이블 (1등: 10점, 2등: 7점, 3등: 5점, 4등: 3점, 5등 이하: 2점)
     const rankPointTable = [10, 7, 5, 3, 2];
     const awardedPointsMap = {};
     const rankDisplayMap = {};
@@ -315,7 +315,6 @@ function evaluateBombDefusalResults() {
 
     let currentRank = 1;
     sorted.forEach((st, idx) => {
-        // 앞사람과 점수가 같으면 같은 공동 순위 유지!
         if (idx > 0 && st.score < sorted[idx - 1].score) {
             currentRank = idx + 1;
         }
@@ -323,7 +322,6 @@ function evaluateBombDefusalResults() {
         const earnedPt = rankPointTable[currentRank - 1] || 2;
         awardedPointsMap[st.member.id] = earnedPt;
 
-        // 공동 1등까지 모두 탈출 성공!
         if (currentRank === 1) {
             st.isWinner = true;
             st.ropeGroup.visible = false;
@@ -338,7 +336,6 @@ function evaluateBombDefusalResults() {
         }
     });
 
-    // 누적 점수(PT) 반영 (방장이 서버/로컬 누적 점수 갱신)
     if (typeof window.awardMinigamePoints === 'function') {
         window.awardMinigamePoints(awardedPointsMap);
     }
@@ -420,12 +417,12 @@ function finishBombMinigameToRoom() {
 window.exitBombMinigameToRoom = function() {
     window.hasPlayedFirstRound = true;
     window.isBombMinigameActive = false;
+    if (window.PartySound) window.PartySound.stopBGM();
     document.getElementById('bomb-game-overlay').classList.add('hidden');
     if (bombGameGroup) bombGameGroup.visible = false;
     startPartySequence();
 };
 
-// 매 프레임 폭탄 해체 애니메이션 및 분할 화면(Viewport) 렌더링
 window.updateAndRenderBombMinigame = function(dt, elapsed) {
     if (bombStages.length === 0) return;
     bombPhaseElapsed += dt;
@@ -437,11 +434,20 @@ window.updateAndRenderBombMinigame = function(dt, elapsed) {
             st.bombLed.material.color.setHex(Math.sin(elapsed * 20) > 0 ? 0xff4757 : 0x550000);
             st.spark.scale.setScalar(0.8 + Math.sin(elapsed * 30) * 0.4);
         });
-        if (bombPhaseElapsed >= 3.0) {
+        if (bombPhaseElapsed >= 2.1 && !window._bombReadyPlayed) {
+            window._bombReadyPlayed = true;
+            document.getElementById('bomb-phase-banner').textContent = '✨ READY...';
+            if (typeof window.showMinigameCountdown === 'function') window.showMinigameCountdown('READY...');
+            if (window.PartySound) window.PartySound.playSfx('ready');
+        }
+        if (bombPhaseElapsed >= 3.3) {
+            window._bombReadyPlayed = false;
             bombSubPhase = 'PLAY';
             bombPhaseElapsed = 0;
             document.getElementById('bomb-phase-banner').textContent = '⌨️ 영단어를 입력해 폭탄을 해체하세요!';
             document.getElementById('bomb-typing-panel').classList.remove('hidden');
+            if (typeof window.showMinigameCountdown === 'function') window.showMinigameCountdown('START! 💣');
+            if (window.PartySound) window.PartySound.playSfx('start');
             setTimeout(() => document.getElementById('bomb-word-input').focus(), 40);
         }
     } else if (bombSubPhase === 'PLAY') {
