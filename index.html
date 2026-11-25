@@ -168,6 +168,56 @@
         </div>
     </div>
 
+    <!-- ========================================== -->
+    <!-- 미니게임 3: 스타디움 리듬 스테이지 HUD -->
+    <!-- ========================================== -->
+    <div id="rhythm-game-overlay" class="hidden fixed inset-0 z-50 pointer-events-none flex flex-col justify-between">
+        <div class="relative z-20 flex flex-col items-center pt-3 px-4 gap-2">
+            <div class="glass-panel rounded-full px-6 py-2 flex items-center gap-4 shadow-xl border-2 border-amber-400">
+                <span class="text-2xl">🎤</span>
+                <span id="rhythm-phase-banner" class="font-black text-slate-800 text-sm md:text-base">스타디움 무대 입장!</span>
+                <span id="rhythm-stage-badge" class="bg-rose-600 text-white font-black text-xs px-3 py-1 rounded-full">1 / 8곡</span>
+            </div>
+            <div id="rhythm-live-scores" class="flex flex-wrap justify-center gap-1.5"></div>
+        </div>
+
+        <!-- 하단 리듬 타이밍 바 & 단어 타이핑 HUD -->
+        <div id="rhythm-play-hud" class="hidden relative z-20 mx-auto mb-6 w-full max-w-xl px-4">
+            <div class="glass-panel rounded-3xl p-4 text-center border-4 border-amber-400 shadow-2xl">
+                <div class="flex items-center justify-between text-xs font-black text-slate-600 mb-1.5">
+                    <span id="rhythm-word-ko" class="text-indigo-600 text-sm">고양이 (정박 비트)</span>
+                    <span id="rhythm-combo-text" class="text-rose-500">KEEP BEAT!</span>
+                    <span>점수: <strong id="rhythm-my-score" class="text-indigo-700 text-base">0</strong></span>
+                </div>
+                <!-- 알파벳 슬롯 -->
+                <div id="rhythm-letter-slots" class="flex items-center justify-center gap-2 mb-3"></div>
+                <!-- 리듬 노트 슬라이더 트랙 (노트가 왼쪽 황금 판정 원에 닿을 때 키보드 입력!) -->
+                <div class="relative h-12 bg-slate-900/90 rounded-full border-2 border-indigo-400 overflow-hidden px-2">
+                    <div class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full border-4 border-amber-400 bg-amber-300/30 flex items-center justify-center text-[10px] font-black text-amber-200">
+                        HIT!
+                    </div>
+                    <div id="rhythm-note-track" class="relative w-full h-full"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 결과 순위표 모달 -->
+        <div id="rhythm-result-panel" class="hidden relative z-30 m-auto w-full max-w-md px-4 pointer-events-auto">
+            <div class="glass-panel rounded-3xl p-6 text-center border-4 border-amber-400 shadow-2xl">
+                <div class="text-4xl mb-1">🏆</div>
+                <h2 class="text-2xl font-black text-slate-800 mb-1">리듬 스테이지 결과!</h2>
+                <p id="rhythm-winner-desc" class="text-sm font-bold text-emerald-600 mb-4">최고의 아이돌 우승!</p>
+                <div id="rhythm-ranking-list" class="space-y-2 mb-5 text-left"></div>
+                <button id="rhythm-next-round-btn" type="button" onclick="finishRhythmMinigameToRoom()" class="hidden w-full jelly-btn bg-indigo-600 hover:bg-indigo-500 text-white font-black py-3 rounded-2xl shadow-lg">
+                    파티 룸으로 돌아가기 🛋️
+                </button>
+                <div id="rhythm-guest-next-wait" class="hidden text-xs font-bold text-slate-500 py-2">
+                    방장이 다음 라운드로 이동할 때까지 대기 중... ⏳
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 3D 캐릭터 쇼케이스 선택 화면 -->
     <div id="character-select-overlay" class="fixed inset-0 z-40 flex flex-col justify-between p-4 md:p-8 pointer-events-none">
         <div class="flex flex-col items-center mt-2 pointer-events-auto">
@@ -270,6 +320,7 @@
     <script type="module" src="firebase-sync.js?v=8"></script>
     <script src="minigame-bomb.js?v=8"></script>
     <script src="minigame-wall.js?v=8"></script>
+    <script src="minigame-rhythm.js?v=8"></script>
     <script src="main.js?v=8"></script>
 </body>
 </html>
