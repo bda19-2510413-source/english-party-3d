@@ -585,17 +585,16 @@ function syncPartyRoomCharacters() {
         const charObj = roomCharacterMap[key];
         if (!charObj.isSeatedOnSofa) {
             charObj.isSeatedOnSofa = true;
-            charObj.seatHopTimer = 0.45;
+            charObj.seatHopTimer = 0.55;
         }
         charObj.group.position.set(seatX, 0.72, -2.25);
-        charObj.group.rotation.y = Math.PI;
-        // 다리를 앞으로 쭉 뻗고 발을 살짝 위로 든 귀여운 착석 자세
+        // 앞(카메라 쪽)을 바라보고 소파에 앉는 기본 자세
+        charObj.group.rotation.y = 0;
         charObj.leftLeg.rotation.x = -Math.PI / 2;
         charObj.rightLeg.rotation.x = -Math.PI / 2;
         charObj.leftLeg.position.set(-0.26, 0.52, 0.28);
         charObj.rightLeg.position.set(0.26, 0.52, 0.28);
-        // 고개를 들어 위쪽 대형 TV 모니터를 올려다보는 각도
-        charObj.headGroup.rotation.x = 0.28;
+        charObj.headGroup.rotation.x = 0;
     });
 
     Object.keys(roomCharacterMap).forEach(key => {
@@ -1255,24 +1254,31 @@ function animate() {
         Object.values(roomCharacterMap).forEach((ch, idx) => {
             if (ch.seatHopTimer && ch.seatHopTimer > 0) {
                 ch.seatHopTimer = Math.max(0, ch.seatHopTimer - dt);
-                const hop = Math.sin((1 - ch.seatHopTimer / 0.45) * Math.PI) * 0.55;
+                const hop = Math.sin((1 - ch.seatHopTimer / 0.55) * Math.PI) * 0.65;
                 ch.group.position.y = 0.72 + hop;
             } else {
                 ch.group.position.y = 0.72;
             }
             ch.bodyPivot.position.y = Math.sin(elapsed * 4 + idx) * 0.035;
-            ch.headGroup.rotation.x = 0.28 + Math.sin(elapsed * 3.5 + idx) * 0.05;
             ch.leftLeg.rotation.x = -Math.PI / 2 + Math.sin(elapsed * 5 + idx) * 0.12;
             ch.rightLeg.rotation.x = -Math.PI / 2 - Math.sin(elapsed * 5 + idx) * 0.12;
 
-            if (rouletteState === 'DONE') {
-                ch.leftArm.rotation.z = 2.4 + Math.sin(elapsed * 10 + idx) * 0.25;
-                ch.rightArm.rotation.z = -2.4 - Math.sin(elapsed * 10 + idx) * 0.25;
-            } else {
+            if (rouletteState === 'IDLE') {
+                // 처음 입장 & 대기 중: 앞(카메라)을 보고 앉아서 여유롭게 흔들거리는 모션
+                ch.group.rotation.y += (0 - ch.group.rotation.y) * 8 * dt;
+                ch.headGroup.rotation.x = Math.sin(elapsed * 3 + idx) * 0.05;
                 ch.leftArm.rotation.z = 0.55;
                 ch.rightArm.rotation.z = -0.55;
                 ch.leftArm.rotation.x = -0.35;
                 ch.rightArm.rotation.x = -0.35;
+            } else {
+                // 룰렛 돌아갈 때 & 당첨 시: 뒤쪽 TV 모니터를 돌아보며 기대·환호!
+                ch.group.rotation.y += (Math.PI - ch.group.rotation.y) * 8 * dt;
+                ch.headGroup.rotation.x = 0.26;
+                if (rouletteState === 'DONE') {
+                    ch.leftArm.rotation.z = 2.4 + Math.sin(elapsed * 10 + idx) * 0.25;
+                    ch.rightArm.rotation.z = -2.4 - Math.sin(elapsed * 10 + idx) * 0.25;
+                }
             }
         });
 
@@ -1297,14 +1303,14 @@ function animate() {
             drawRouletteMonitor();
         }
 
-        if (phaseTimer < 1.5) {
-            // 처음 1.5초는 소파에 폴짝 앉는 모습을 정면 대각선에서 귀엽게 보여줌
-            camera.position.lerp(new THREE.Vector3(2.8, 2.3, 1.8), 4.5 * dt);
-            camera.lookAt(0, 1.35, -2.3);
+        if (rouletteState === 'SPINNING' || rouletteState === 'DONE') {
+            // 룰렛 돌릴 때만 대형 TV 모니터로 줌인 확대!
+            camera.position.lerp(new THREE.Vector3(0, 6.2, 0.2), 3.6 * dt);
+            camera.lookAt(0, 6.35, -6.2);
         } else {
-            // 이후 소파에 앉은 팀원들과 대형 TV 모니터가 함께 보이는 구도
-            camera.position.lerp(new THREE.Vector3(0, 4.6, 6.8), 3.2 * dt);
-            camera.lookAt(0, 4.1, -5.8);
+            // 처음 입장 & 대기 시: 소파에 앉은 전체 모습과 TV가 함께 보이는 전체 풀샷 구도
+            camera.position.lerp(new THREE.Vector3(0, 4.4, 7.6), 4.0 * dt);
+            camera.lookAt(0, 3.6, -4.5);
         }
     }
 
@@ -1312,7 +1318,7 @@ function animate() {
 }
 
 window.onload = function () {
-    console.log("12");
+    console.log("13");
     initScene();
     initCharacterSelectUI();
     setupControls();
