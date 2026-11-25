@@ -441,8 +441,9 @@ function createPartyRoom() {
         armRest.position.set(ax, 0.68, 0);
         sofaGroup.add(armRest);
     });
-    [-2.0, 0, 2.0].forEach(cx => {
-        const cushion = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.25, 1.65), cushionMat);
+    // 최대 4명 정원에 맞춘 4칸 소파 쿠션
+    [-2.55, -0.85, 0.85, 2.55].forEach(cx => {
+        const cushion = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.25, 1.65), cushionMat);
         cushion.position.set(cx, 0.92, 0.15);
         sofaGroup.add(cushion);
     });
