@@ -28,7 +28,6 @@ let selectedTotalRounds = 5;
 window.currentRoomInfo = null;
 window.hasPlayedFirstRound = false;
 
-// 로비 다른 플레이어 3D 인스턴스 관리 맵
 const remoteLobbyPlayers = {};
 
 let lobbyGroup, partyRoomGroup, bombGameGroup;
@@ -50,6 +49,7 @@ let rouletteVelocity = 0;
 let rouletteTargetIndex = 0;
 let rouletteState = 'IDLE';
 let selectedRouletteGame = null;
+let lastRouletteTickSlot = -1;
 
 function spawnShoveWave(pos, rotY) {
     const wave = new THREE.Mesh(
@@ -81,7 +81,10 @@ function setupEvents() {
             if (!document.getElementById('custom-modal').classList.contains('hidden')) return;
             e.preventDefault();
             if (currentNearObject) triggerInteraction();
-            else if (e.code === 'Space' && playerChameleon) playerChameleon.jump();
+            else if (e.code === 'Space' && playerChameleon) {
+                if (playerChameleon.isGrounded && window.PartySound) window.PartySound.playSfx('jump');
+                playerChameleon.jump();
+            }
         }
     });
 
@@ -110,6 +113,7 @@ function setupEvents() {
         isDragging = false;
         if (dragDistance < 6 && !isSelectingCharacter && gamePhase === 'LOBBY' && playerChameleon) {
             if (document.getElementById('custom-modal').classList.contains('hidden')) {
+                if (window.PartySound) window.PartySound.playSfx('shove');
                 playerChameleon.shove();
                 handleLocalLobbyShove();
             }
@@ -175,6 +179,7 @@ function selectCharacterByIndex(index) {
         playerChameleon.setNickname(getPlayerNickname());
         playerChameleon.jump();
     }
+    if (window.PartySound) window.PartySound.playSfx('jump');
     updateShowcaseUI();
 }
 
@@ -187,6 +192,7 @@ function selectCharacterColor(colorHex) {
         playerChameleon.setColor(colorHex);
         playerChameleon.jump();
     }
+    if (window.PartySound) window.PartySound.playSfx('jump');
     updateShowcaseUI();
 }
 
@@ -221,7 +227,6 @@ function openCharacterSelector() {
         showcasePedestal.position.set(playerChameleon.group.position.x, 0.04, playerChameleon.group.position.z);
         showcasePedestal.visible = true;
     }
-    // 캐릭터 선택 화면에서는 다른 플레이어가 겹쳐 보이지 않도록 일시 숨김
     Object.values(remoteLobbyPlayers).forEach(r => {
         if (r && r.char && r.char.group) r.char.group.visible = false;
     });
@@ -235,7 +240,6 @@ function confirmCharacterSelection() {
     const finalNick = getPlayerNickname();
     if (playerChameleon) {
         playerChameleon.setNickname(finalNick);
-        // 처음 입장 시 30명이 한 점에 겹치지 않도록 광장 원형 반경 내 랜덤 위치로 분산 배치
         if (!window.hasEnteredLobbyOnce) {
             window.hasEnteredLobbyOnce = true;
             const angle = Math.random() * Math.PI * 2;
@@ -254,7 +258,6 @@ function confirmCharacterSelection() {
     document.getElementById('lobby-population-hud').classList.remove('hidden');
     cameraAngle = 0;
 
-    // 숨겨두었던 로비 다른 플레이어들 다시 표시
     Object.values(remoteLobbyPlayers).forEach(r => {
         if (r && r.char && r.char.group) r.char.group.visible = true;
     });
@@ -275,6 +278,73 @@ function confirmCharacterSelection() {
             window.pendingLobbyJoin = joinPayload;
         }
     }
+    if (window.PartySound) {
+        window.PartySound.playSfx('portal');
+        window.PartySound.startLobbyBGM();
+    }
+}
+
+window.showMinigameCountdown = function(text) {
+    let el = document.getElementById('global-minigame-countdown');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'global-minigame-countdown';
+        el.className = 'fixed inset-0 z-[70] pointer-events-none flex items-center justify-center';
+        document.body.appendChild(el);
+    }
+    el.innerHTML = `<div class="px-10 py-5 rounded-3xl bg-slate-900/90 border-4 border-amber-400 text-amber-300 font-black text-5xl md:text-7xl tracking-wider shadow-2xl animate-bounce">${text}</div>`;
+    el.classList.remove('hidden');
+    clearTimeout(window._countdownHideTimer);
+    window._countdownHideTimer = setTimeout(() => {
+        el.classList.add('hidden');
+    }, 950);
+};
+
+function checkProximity() {
+    if (!playerChameleon || gamePhase !== 'LOBBY') return;
+    const pPos = playerChameleon.group.position;
+    const distToPortal = Math.hypot(pPos.x - 0, pPos.z - (-9));
+    const promptEl = document.getElementById('interaction-prompt');
+
+    if (distToPortal < 3.5) {
+        currentNearObject = 'portal';
+        promptEl.classList.remove('opacity-0', 'pointer-events-none');
+    } else {
+        currentNearObject = null;
+        promptEl.classList.add('opacity-0', 'pointer-events-none');
+    }
+}
+
+function triggerInteraction() {
+    if (currentNearObject === 'portal') {
+        if (window.PartySound) window.PartySound.playSfx('portal');
+        document.getElementById('portal-current-nickname').textContent = getPlayerNickname();
+        resetPortalModal();
+        const modal = document.getElementById('custom-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+}
+
+function resetPortalModal() {
+    document.getElementById('portal-step-select').classList.remove('hidden');
+    document.getElementById('portal-step-join').classList.add('hidden');
+    document.getElementById('join-error-msg').textContent = '';
+}
+
+function selectTotalRounds(rounds) {
+    selectedTotalRounds = rounds;
+    document.querySelectorAll('.round-opt-btn').forEach(btn => {
+        const val = Number(btn.dataset.rounds);
+        const active = val === rounds;
+        btn.classList.toggle('bg-indigo-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('border-indigo-600', active);
+        btn.classList.toggle('shadow', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-slate-700', !active);
+        btn.classList.toggle('border-transparent', !active);
+    });
 }
 
 function copyRoomCodeToClipboard() {
@@ -285,58 +355,9 @@ function copyRoomCodeToClipboard() {
     }
     const copyBtn = document.getElementById('copy-room-code-btn');
     if (copyBtn) {
-        const orig = copyBtn.textContent;
-        copyBtn.textContent = '✅ 복사됨!';
-        setTimeout(() => { copyBtn.textContent = orig; }, 1400);
+        copyBtn.textContent = `✅ 복사됨 (${code})`;
+        setTimeout(() => { copyBtn.textContent = '📋 코드 복사'; }, 1600);
     }
-}
-
-function checkProximity() {
-    if (!playerChameleon) return;
-    const promptEl = document.getElementById('interaction-prompt');
-    if (gamePhase !== 'LOBBY' || isSelectingCharacter) {
-        currentNearObject = null;
-        promptEl.classList.add('opacity-0', 'pointer-events-none');
-        return;
-    }
-    const pPos = playerChameleon.group.position;
-    const distToPortal = Math.hypot(pPos.x - 0, pPos.z - (-9));
-
-    if (distToPortal < 4.3) {
-        currentNearObject = 'PORTAL';
-        promptEl.classList.remove('opacity-0', 'pointer-events-none');
-    } else {
-        currentNearObject = null;
-        promptEl.classList.add('opacity-0', 'pointer-events-none');
-    }
-}
-
-function triggerInteraction() {
-    if (!currentNearObject) return;
-    document.getElementById('portal-current-nickname').textContent = getPlayerNickname();
-    resetPortalModal();
-    const modal = document.getElementById('custom-modal');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-}
-
-function resetPortalModal() {
-    document.getElementById('portal-step-select').classList.remove('hidden');
-    document.getElementById('portal-step-join').classList.add('hidden');
-}
-
-function selectTotalRounds(rounds) {
-    selectedTotalRounds = rounds;
-    document.querySelectorAll('.round-opt-btn').forEach(btn => {
-        const r = Number(btn.dataset.rounds);
-        btn.classList.toggle('bg-indigo-600', r === rounds);
-        btn.classList.toggle('text-white', r === rounds);
-        btn.classList.toggle('border-indigo-600', r === rounds);
-        btn.classList.toggle('shadow', r === rounds);
-        btn.classList.toggle('bg-white', r !== rounds);
-        btn.classList.toggle('text-slate-700', r !== rounds);
-        btn.classList.toggle('border-transparent', r !== rounds);
-    });
 }
 
 async function createTeamAndEnterRoom() {
@@ -412,15 +433,11 @@ async function submitJoinRoom() {
     startPartySequence();
 }
 
-// ==========================================
-// 로비(포탈 들판) 다른 플레이어 실시간 동기화 & 밀치기 모션/판정
-// ==========================================
 window.onLobbyPlayersUpdated = function(allPlayers, myId) {
     if (!lobbyGroup) return;
     const now = Date.now();
     const activeIds = new Set();
 
-    // 로비 접속자 최대 30명까지 정렬 및 필터링
     const validEntries = Object.entries(allPlayers)
         .filter(([pid, pData]) => pid !== myId && pData && pData.inLobby !== false && (!pData.updatedAt || now - pData.updatedAt <= 90000))
         .slice(0, 29);
@@ -443,7 +460,6 @@ window.onLobbyPlayersUpdated = function(allPlayers, myId) {
                 pData.name || '친구',
                 lobbyGroup
             );
-            // 캐릭터 선택 화면 중이면 겹치지 않도록 숨김 유지
             charObj.group.visible = !isSelectingCharacter;
             remote = {
                 char: charObj,
@@ -466,7 +482,6 @@ window.onLobbyPlayersUpdated = function(allPlayers, myId) {
             remote.targetRotY = pData.rotY || 0;
         }
 
-        // 상대방이 좌클릭 밀치기를 했을 때 내 화면에서도 팔을 뻗는 3D 밀치기 모션 + 충격파 즉시 실행!
         if (pData.shoveEventId && pData.shoveEventId !== remote.lastShoveEventId) {
             remote.lastShoveEventId = pData.shoveEventId;
             remote.char.group.rotation.y = remote.targetRotY;
@@ -526,7 +541,6 @@ window.onRoomMembersUpdated = function() {
     }
 };
 
-// 모든 파티원이 미니게임 결과를 완료했을 때만 방장의 '파티 룸으로 돌아가기' 버튼 활성화!
 window.onMinigameFinishedPlayersUpdated = function(finishedMap) {
     if (!window.currentRoomInfo || window.currentRoomInfo.role !== 'HOST') return;
     const members = window.currentRoomInfo.members || [];
@@ -550,9 +564,6 @@ window.onMinigameFinishedPlayersUpdated = function(finishedMap) {
     });
 };
 
-// ==========================================
-// 등수별 누적 점수(PT) 관리 & 파티 룸 순위판 렌더링
-// ==========================================
 window.awardMinigamePoints = function(awardedPointsMap) {
     if (!window.currentRoomInfo) return;
     const isHost = window.currentRoomInfo.role === 'HOST';
@@ -592,7 +603,6 @@ function renderPartyScoreboard() {
 }
 
 function syncSofaCharacters() {
-    // 한 팀 최대 4명 소파 착석 위치
     const seatXPositions = [-2.55, -0.85, 0.85, 2.55];
     const members = (window.currentRoomInfo && window.currentRoomInfo.members.length > 0)
         ? window.currentRoomInfo.members.slice(0, 4)
@@ -685,13 +695,14 @@ function startPartySequence() {
     document.getElementById('return-lobby-btn').classList.toggle('hidden', !isHost || window.hasPlayedFirstRound);
     document.getElementById('party-status-text').textContent = '🛋️ 소파로 걸어가 자리에 앉는 중...';
 
+    if (window.PartySound) window.PartySound.startPartyRoomBGM();
+
     camera.position.set(0, 4.2, 8.8);
     camera.lookAt(0, 3.2, -3.5);
 }
 
 function triggerRouletteSpin() {
     if (window.currentRoomInfo && window.currentRoomInfo.role !== 'HOST') return;
-    // 구현 완료된 미니게임(0: 폭탄 해체하기, 1: 문법 벽 돌파, 2: 스타디움 리듬 스테이지) 중 랜덤 추첨!
     const implementedGameIndices = [0, 1, 2];
     const targetIdx = implementedGameIndices[Math.floor(Math.random() * implementedGameIndices.length)];
     beginRouletteAnimation(targetIdx);
@@ -723,7 +734,6 @@ window.startRemoteRouletteSpin = function(targetIdx) {
 };
 
 function beginRouletteAnimation(targetIdx) {
-    // 혹시 미니게임 화면이 남아있는 상태였다면 안전하게 파티 룸 상태로 전환
     if (window.isBombMinigameActive || window.isWallMinigameActive || window.isRhythmMinigameActive) {
         window.isBombMinigameActive = false;
         window.isWallMinigameActive = false;
@@ -743,6 +753,7 @@ function beginRouletteAnimation(targetIdx) {
     rouletteTargetIndex = targetIdx;
     rouletteVelocity = 26 + Math.random() * 4;
     selectedRouletteGame = null;
+    lastRouletteTickSlot = -1;
     document.getElementById('spin-roulette-btn').classList.add('hidden');
     document.getElementById('start-minigame-btn').classList.add('hidden');
     document.getElementById('party-status-text').textContent = '🎰 모니터 확대 및 룰렛 회전 중!';
@@ -777,6 +788,9 @@ function returnToLobby() {
             rotY: playerChameleon.group.rotation.y,
             inLobby: true
         }, true);
+    }
+    if (window.PartySound) {
+        window.PartySound.startLobbyBGM();
     }
 }
 
@@ -860,6 +874,12 @@ function animate() {
                 rouletteOffset += rouletteVelocity * dt;
                 rouletteVelocity *= Math.pow(0.42, dt);
 
+                const curSlot = Math.floor(rouletteOffset);
+                if (curSlot !== lastRouletteTickSlot) {
+                    lastRouletteTickSlot = curSlot;
+                    if (window.PartySound) window.PartySound.playSfx('roulette_tick');
+                }
+
                 if (rouletteVelocity < 0.45) {
                     const total = ROULETTE_GAMES.length;
                     const currentBase = Math.floor(rouletteOffset / total) * total;
@@ -871,6 +891,7 @@ function animate() {
                         rouletteOffset = targetSlot;
                         rouletteState = 'DONE';
                         selectedRouletteGame = ROULETTE_GAMES[rouletteTargetIndex];
+                        if (window.PartySound) window.PartySound.playSfx('roulette_win');
                         document.getElementById('party-status-text').textContent =
                             `🎉 선택된 게임: ${selectedRouletteGame.icon} ${selectedRouletteGame.title}`;
                         const isHost = !window.currentRoomInfo || window.currentRoomInfo.role === 'HOST';
@@ -889,19 +910,16 @@ function animate() {
         }
     }
 
-    // 미니게임 1: 폭탄 해체하기 독립 모듈 렌더링
     if (gamePhase === 'MINIGAME_BOMB' && typeof window.updateAndRenderBombMinigame === 'function') {
         window.updateAndRenderBombMinigame(dt, elapsed);
         return;
     }
 
-    // 미니게임 2: 영어 문법 벽 돌파 독립 모듈 렌더링
     if (gamePhase === 'MINIGAME_WALL' && typeof window.updateAndRenderWallMinigame === 'function') {
         window.updateAndRenderWallMinigame(dt, elapsed);
         return;
     }
 
-    // 미니게임 3: 스타디움 리듬 스테이지 독립 모듈 렌더링
     if (gamePhase === 'MINIGAME_RHYTHM' && typeof window.updateAndRenderRhythmMinigame === 'function') {
         window.updateAndRenderRhythmMinigame(dt, elapsed);
         return;
@@ -918,7 +936,6 @@ function animate() {
         while (diff > Math.PI) diff -= Math.PI * 2;
         g.rotation.y += diff * 10 * dt;
 
-        // 상대방이 밀치기 모션 중일 때 팔을 앞으로 뻗고 몸을 숙이는 3D 애니메이션 재생
         if (remote.char.isShoving) {
             remote.char.shoveTimer -= dt;
             const progress = 1 - Math.max(0, remote.char.shoveTimer / 0.34);
@@ -1037,7 +1054,7 @@ function animate() {
 }
 
 window.onload = function () {
-    console.log("9");
+    console.log("10");
     initScene();
     initCharacterSelectorUI();
     setupEvents();
