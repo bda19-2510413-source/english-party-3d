@@ -1,3 +1,28 @@
+// ==========================================
+// 미니게임 3: 스타디움 리듬 스테이지 (RHYTHM STAGE) 독립 모듈
+// - 360도 3층 스타디움 관중석 + 야광봉 환호 + 마이크 댄스 + 시네마틱 오프닝
+// - 리듬 천국 스타일 예고 리듬 멜로디(Call & Response) + 다양한 박자 패턴
+// ==========================================
+window.isRhythmMinigameActive = false;
+
+let rhythmGameGroup = null;
+let rhythmSubPhase = 'INTRO'; // 'INTRO' (3.6초 콘서트 오프닝) | 'PLAY' (리듬 타이핑) | 'RESULT' (최종 순위)
+let rhythmPhaseTimer = 0;
+let rhythmPlayTime = 0;
+let rhythmPlayers = {};
+let rhythmCrowd = [];
+let rhythmSpotlights = [];
+let rhythmStageSparks = [];
+let rhythmMonitorCanvas = null, rhythmMonitorCtx = null, rhythmMonitorTexture = null;
+
+// 현재 출제 중인 단어 & 노트 시퀀스
+let rhythmWaveQueue = [];
+let currentWaveIdx = 0;
+let currentRhythmWave = null;
+let myRhythmScore = 0;
+let myRhythmCombo = 0;
+let lastRhythmSyncTime = 0;
+
 // 글자 수(3~6글자) + 같은 글자 수 내에서도 박자 간격과 음높이가 다른 다채로운 리듬 패턴 은행
 const RHYTHM_WORD_PATTERNS = [
     { word: 'CAT', ko: '고양이', style: '따! - 따! - 따!', beats: [0.0, 0.65, 1.30], pitches: [523.25, 659.25, 783.99] },
@@ -14,35 +39,6 @@ const RHYTHM_WORD_PATTERNS = [
     { word: 'RHYTHM', ko: '리듬',   style: '다-다-단! ... 다-다-단!', beats: [0.0, 0.30, 0.60, 1.25, 1.55, 1.85], pitches: [523.25, 659.25, 783.99, 587.33, 783.99, 1046.50] },
     { word: 'MELODY', ko: '멜로디', style: '따-따-따! ... 다-다-단!', beats: [0.0, 0.48, 0.96, 1.52, 1.82, 2.12], pitches: [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50] },
     { word: 'STAGE!', ko: '무대',   style: '다-다-다-단! ... 따-단!', beats: [0.0, 0.28, 0.56, 0.84, 1.48, 1.82], pitches: [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50] }
-];
-let rhythmSpotlights = [];
-let rhythmStageSparks = [];
-let rhythmMonitorCanvas = null, rhythmMonitorCtx = null, rhythmMonitorTexture = null;
-
-// 현재 출제 중인 단어 & 노트 시퀀스
-let rhythmWaveQueue = [];
-let currentWaveIdx = 0;
-let currentRhythmWave = null;
-let myRhythmScore = 0;
-let myRhythmCombo = 0;
-let lastRhythmSyncTime = 0;
-
-// 글자 수(3~6글자) + 같은 글자 수 내에서도 박자 간격이 다른 다채로운 리듬 패턴 은행
-const RHYTHM_WORD_PATTERNS = [
-    { word: 'CAT', ko: '고양이', style: '정박 비트', beats: [0.0, 0.65, 1.30] },
-    { word: 'SUN', ko: '태양',   style: '경쾌한 스윙', beats: [0.0, 0.42, 1.15] },
-    { word: 'FLY', ko: '날다',   style: '당김음 엇박', beats: [0.0, 0.78, 1.22] },
-    { word: 'STAR', ko: '별',     style: '4비트 정박', beats: [0.0, 0.55, 1.10, 1.65] },
-    { word: 'JUMP', ko: '점프',   style: '바운스 리듬', beats: [0.0, 0.38, 0.98, 1.36] },
-    { word: 'BEAT', ko: '박자',   style: '3연타 피니시', beats: [0.0, 0.36, 0.72, 1.42] },
-    { word: 'SONG', ko: '노래',   style: '싱코페이션', beats: [0.0, 0.68, 1.06, 1.68] },
-    { word: 'DANCE', ko: '춤추다', style: '아이돌 훅',   beats: [0.0, 0.45, 0.90, 1.25, 1.80] },
-    { word: 'MUSIC', ko: '음악',   style: '스타카토 5연', beats: [0.0, 0.36, 0.72, 1.08, 1.44] },
-    { word: 'SMILE', ko: '미소',   style: '리드미컬 웨이브', beats: [0.0, 0.60, 0.98, 1.36, 1.92] },
-    { word: 'PARTY', ko: '파티',   style: '페스티벌 비트', beats: [0.0, 0.40, 1.00, 1.40, 1.80] },
-    { word: 'RHYTHM', ko: '리듬',   style: '더블 타임',   beats: [0.0, 0.35, 0.70, 1.25, 1.60, 1.95] },
-    { word: 'MELODY', ko: '멜로디', style: '물결 아르페지오', beats: [0.0, 0.48, 0.96, 1.32, 1.68, 2.15] },
-    { word: 'STAGE!', ko: '무대',   style: '앙코르 피버', beats: [0.0, 0.32, 0.64, 0.96, 1.48, 1.96] }
 ];
 
 function attachMicrophoneToCharacter(charObj) {
@@ -158,7 +154,7 @@ function buildRhythmStadiumStage() {
         rhythmGameGroup.add(tower);
     });
 
-    // 3. 무대 뒤 초대형 리듬 전광판 스크린 & 네온 스타디움 아치
+    // 3. 무대 뒤 초대형 리듬 전광판 스크린
     const screenFrame = new THREE.Mesh(
         new THREE.BoxGeometry(13.6, 5.2, 0.5),
         new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.3 })
@@ -186,7 +182,7 @@ function buildRhythmStadiumStage() {
         { rInner: 14.5, rOuter: 18.0, y: 1.2 },
         { rInner: 18.0, rOuter: 21.8, y: 3.1 },
         { rInner: 21.8, rOuter: 26.0, y: 5.2 }
-    ].forEach((tier, tIdx) => {
+    ].forEach((tier) => {
         const tierMesh = new THREE.Mesh(
             new THREE.CylinderGeometry(tier.rOuter, tier.rInner, 1.9, 48, 1, true),
             standMat
@@ -201,12 +197,10 @@ function buildRhythmStadiumStage() {
         rhythmGameGroup.add(tierMesh, neonBand);
     });
 
-    // 5. 스탠드 1~3층과 앞쪽 객석 전체에서 야광봉을 흔들며 환호하는 관중들 (총 95명!)
+    // 5. 스탠드 1~3층과 앞쪽 객석 전체에서 야광봉을 흔들며 환호하는 관중들 (총 95명)
     const crowdColors = [0xff4757, 0x2ed573, 0x1e90ff, 0xffa502, 0x9c88ff, 0xff9ff3, 0x00d2d3];
     for (let i = 0; i < 95; i++) {
-        // 전 방위(뒤쪽 스크린 좌우 + 상단 관중석 + 앞쪽 객석) 배치
         const angle = (i / 95) * Math.PI * 2 + (Math.random() - 0.5) * 0.15;
-        // 모니터 바로 정면(-PI) 일부만 살짝 비워서 스크린이 가리지 않게 배치
         const normAngle = Math.atan2(Math.sin(angle), Math.cos(angle));
         if (Math.abs(normAngle - Math.PI) < 0.34 && i % 2 === 0) continue;
 
@@ -297,7 +291,7 @@ function drawRhythmBigMonitor() {
         ctx.fillText('🎤 WELCOME TO RHYTHM STAGE! 🎤', W / 2, 135);
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 30px "Noto Sans KR", sans-serif';
-        ctx.fillText('리듬 노트가 판정선에 닿을 때 알파벳을 입력하세요!', W / 2, 225);
+        ctx.fillText('먼저 들리는 리듬 박자를 듣고 그대로 따라 입력하세요!', W / 2, 225);
         ctx.fillStyle = '#2ed573';
         ctx.font = 'bold 26px "Noto Sans KR", sans-serif';
         ctx.fillText('PERFECT = 100점  •  GOOD = 60점  •  AGAIN = 20점', W / 2, 295);
@@ -305,7 +299,7 @@ function drawRhythmBigMonitor() {
         const wObj = currentRhythmWave;
         ctx.fillStyle = '#70a1ff';
         ctx.font = '900 26px "Fredoka", "Noto Sans KR", sans-serif';
-        ctx.fillText(`STAGE ${currentWaveIdx + 1} / ${rhythmWaveQueue.length}   •   리듬 스타일: [${wObj.style}] (${wObj.word.length}글자)`, W / 2, 54);
+        ctx.fillText(`STAGE ${currentWaveIdx + 1} / ${rhythmWaveQueue.length}   •   리듬: [${wObj.style}] (${wObj.word.length}글자)`, W / 2, 54);
 
         ctx.fillStyle = '#ffd32a';
         ctx.font = 'bold 28px "Noto Sans KR", sans-serif';
@@ -348,7 +342,7 @@ function drawRhythmBigMonitor() {
         ctx.fill();
 
         const waveElapsed = rhythmPlayTime - wObj.startTime;
-        const leadTime = 1.35;
+        const leadTime = 1.45;
 
         wObj.beats.forEach((beatOffset, idx) => {
             if (idx < wObj.typedCount) return;
@@ -373,7 +367,7 @@ function drawRhythmBigMonitor() {
 function setupRhythmWave(idx) {
     currentWaveIdx = idx;
     const base = rhythmWaveQueue[idx % rhythmWaveQueue.length];
-    const leadDelay = 1.55;
+    const leadDelay = 1.65;
     currentRhythmWave = {
         word: base.word,
         ko: base.ko,
@@ -452,17 +446,20 @@ function handleRhythmKeyInput(e) {
 
         let grade = 'AGAIN';
         let addScore = 20;
-        if (diff <= 0.24) {
+        if (diff <= 0.25) {
             grade = 'PERFECT';
             addScore = 100;
             myRhythmCombo += 1;
-        } else if (diff <= 0.50) {
+        } else if (diff <= 0.52) {
             grade = 'GOOD';
             addScore = 60;
             myRhythmCombo += 1;
         } else {
             grade = 'AGAIN';
             addScore = 20;
+            myRhythmCombo = 0;
+        }
+
         if (window.PartySound) {
             const notePitch = currentRhythmWave.pitches ? currentRhythmWave.pitches[currentRhythmWave.typedCount] : null;
             window.PartySound.playJudge(grade, myRhythmCombo, notePitch);
@@ -826,12 +823,12 @@ window.updateAndRenderRhythmMinigame = function(dt, elapsed) {
             const trackEl = document.getElementById('rhythm-note-track');
             if (trackEl) {
                 trackEl.innerHTML = '';
-                const leadTime = 1.35;
+                const leadTime = 1.45;
                 currentRhythmWave.beats.forEach((bTime, idx) => {
-                    // 각 노트 타이밍에 맞춰 가이드 벨소리 울림
                     if (!currentRhythmWave.cuedBeats[idx] && waveElapsed >= bTime) {
                         currentRhythmWave.cuedBeats[idx] = true;
-                        if (window.PartySound) window.PartySound.playNoteGuideCue(idx);
+                        const notePitch = currentRhythmWave.pitches ? currentRhythmWave.pitches[idx] : null;
+                        if (window.PartySound) window.PartySound.playNoteGuideCue(idx, notePitch);
                     }
                     if (idx < currentRhythmWave.typedCount) return;
                     const diff = bTime - waveElapsed;
