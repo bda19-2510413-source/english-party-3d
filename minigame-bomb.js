@@ -180,9 +180,11 @@ window.enterBombDefusalMinigame = function() {
     document.getElementById('bomb-game-overlay').classList.remove('hidden');
     document.getElementById('bomb-typing-panel').classList.add('hidden');
     document.getElementById('bomb-result-panel').classList.add('hidden');
-    document.getElementById('bomb-phase-banner').textContent = '🪢 밧줄에 묶였다! 30초 동안 영단어로 폭탄을 해체하라!';
+    document.getElementById('bomb-phase-banner').textContent = '🎬 OPENING: 밧줄에 묶였다! 30초 안에 영단어로 폭탄을 해체하라!';
     document.getElementById('bomb-timer-text').textContent = '30.0';
     document.getElementById('bomb-my-score').textContent = '0';
+
+    if (window.PartySound) window.PartySound.playSfx('intro_fanfare');
 
     renderBombSplitLabels();
     pickNextBombWord();
@@ -267,6 +269,7 @@ function checkBombWordMatch(rawVal) {
         if (window.syncUpdateMinigameScore && window.currentRoomInfo) {
             window.syncUpdateMinigameScore(window.currentRoomInfo.code, myBombScore);
         }
+        if (window.PartySound) window.PartySound.playSfx('bomb_clear');
         pickNextBombWord();
     }
 }
@@ -498,10 +501,10 @@ window.updateAndRenderBombMinigame = function(dt, elapsed) {
 
         camera.aspect = vpW / vpH;
         camera.updateProjectionMatrix();
-
-        const camDistZ = bombSubPhase === 'INTRO' ? 3.6 : 4.5;
-        const camHeightY = bombSubPhase === 'INTRO' ? 1.85 : 2.15;
-        camera.position.set(st.baseX, camHeightY, camDistZ);
+        const camDistZ = bombSubPhase === 'INTRO' ? (5.2 - Math.min(1, bombPhaseElapsed / 3.0) * 1.8) : 4.5;
+        const camHeightY = bombSubPhase === 'INTRO' ? (2.6 - Math.min(1, bombPhaseElapsed / 3.0) * 0.75) : 2.15;
+        const camAngleOffset = bombSubPhase === 'INTRO' ? Math.sin((1 - Math.min(1, bombPhaseElapsed / 3.0)) * Math.PI) * 1.4 : 0;
+        camera.position.set(st.baseX + camAngleOffset, camHeightY, camDistZ);
         camera.lookAt(st.baseX + 0.1, 1.05, 0.25);
 
         renderer.render(scene, camera);
